@@ -49,8 +49,11 @@ jobs:
       # ── 2. Clone the official ISO build toolchain ─────────────────────────
       - name: Clone create-install-image
         run: |
-          git clone https://github.com/xcp-ng/create-install-image.git
-          echo "▶ Toolchain cloned"
+          git clone -b master https://github.com/xcp-ng/create-install-image.git
+          echo "▶ Toolchain cloned (master branch)"
+          echo "Available scripts:"
+          ls create-install-image/scripts/
+          echo "$(pwd)/create-install-image/"
 
       # ── 3. Inject no-gpgcheck into the XCP-ng version layer ───────────────
       # This tells the installer to skip per-RPM GPG check at install time.

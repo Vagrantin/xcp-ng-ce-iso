@@ -148,7 +148,7 @@ jobs:
               gpg1 --list-secret-keys
 
               echo '── Building ISO ───────────────────────────────────────────'
-              /create-install-image/scripts/create-install-iso.sh \
+              /create-install-image/scripts/create-iso.sh \
                 --output /output/${OUTPUT} \
                 --force-overwrite \
                 --define-repo community!file:///community-repo \

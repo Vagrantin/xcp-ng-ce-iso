@@ -155,7 +155,6 @@ jobs:
       
           docker run --rm \
             --user root \
-            -e TMPDIR=/tmp \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \

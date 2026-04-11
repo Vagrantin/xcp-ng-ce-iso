@@ -59,6 +59,7 @@ jobs:
       - name: Add no-gpgcheck boot parameter to layer
         run: |
           LAYER_DIR="create-install-image/layers/${{ github.event.inputs.xcpng_version }}"
+          mkdir -p ${LAYER_DIR}
           # Layer directory must exist; abort early if the version is wrong
           test -d "${LAYER_DIR}" \
             || (echo "❌ Layer not found: ${LAYER_DIR} — check xcpng_version input"; exit 1)

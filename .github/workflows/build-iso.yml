@@ -116,48 +116,46 @@ jobs:
           echo "▶ Keys exported for container"
 
       # ── 8. Build ISO inside the container ─────────────────────────────────
-      # What happens inside:
-      #   a) Install toolchain dependencies
-      #   b) Import our GPG key into gpg1 keyring
-      #   c) Run create-install-iso.sh with:
-      #      --define-repo  → adds community repo (our xo-lite RPM)
-      #      --sign         → signs repomd.xml, exports public key to ISO root
-      #      layer arg      → xcpng_version layer (contains no-gpgcheck)
+      - name: Build toolchain image with dependencies
+        run: |
+          XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
+          cat > Dockerfile.build <<EOF
+          FROM ghcr.io/xcp-ng/xcp-ng-build-env:${XCPNG_VER}
+          RUN yum install -y -q \
+                genisoimage syslinux grub-tools createrepo_c libfaketime && \
+              yum install -y -q --enablerepo=epel gnupg1
+          EOF
+          docker build -f Dockerfile.build -t xcp-ng-build-local .
+      
       - name: Build ISO
         run: |
           XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
           OUTPUT="xcp-ng-ce-${XCPNG_VER}.iso"
-
+      
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd)/community-repo:/community-repo:ro" \
             -v "/tmp/community-signing.key:/community-signing.key:ro" \
             -v "/tmp/RPM-GPG-KEY-xcp-ng-ce:/RPM-GPG-KEY-xcp-ng-ce:ro" \
             -v "$(pwd):/output" \
-            ghcr.io/xcp-ng/xcp-ng-build-env:${XCPNG_VER} \
+            xcp-ng-build-local \
             bash -c "
               set -e
-
-              echo '── Installing toolchain dependencies ─────────────────────'
-              yum install -y -q \
-                genisoimage syslinux grub-tools createrepo_c libfaketime
-              yum install -y -q --enablerepo=epel gnupg1
-
-              echo '── Importing community GPG key into gpg1 ─────────────────'
+              echo '── Importing community GPG key ────────────────────────'
               gpg1 --batch --import /community-signing.key
               gpg1 --list-secret-keys
-
-              echo '── Building ISO ───────────────────────────────────────────'
+      
+              echo '── Building ISO ───────────────────────────────────────'
               /create-install-image/scripts/create-iso.sh \
                 --output /output/${OUTPUT} \
                 --force-overwrite \
                 --define-repo community!file:///community-repo \
                 --sign xcp-ng-ce ${GPG_KEY_ID} \
                 ${XCPNG_VER}
-
               echo '✅ ISO build complete'
             "
-
+      
           echo "OUTPUT=${OUTPUT}" >> $GITHUB_ENV
           echo "▶ ISO size: $(ls -lh ${OUTPUT} | awk '{print $5}')"
 

@@ -160,6 +160,7 @@ jobs:
             xcp-ng-build-ready \
             bash -c "
               set -e
+              export TMPDIR=/tmp
               echo '── Building install.img ───────────────────────────────'
               /create-install-image/scripts/create-installimg.sh \
                 --output /output/install-${XCPNG_VER}.img \

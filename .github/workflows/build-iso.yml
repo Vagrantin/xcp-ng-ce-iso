@@ -139,30 +139,40 @@ jobs:
           docker commit "${CONTAINER_ID}" xcp-ng-build-ready
           docker rm "${CONTAINER_ID}"
           echo "▶ Image ready with GPG key baked in"
-      
+
       - name: Build ISO
         run: |
           XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
           OUTPUT="xcp-ng-ce-${XCPNG_VER}.iso"
-      
+
           docker run --rm \
             --user "$(id -u):$(id -g)" \
+            -e TMPDIR=/tmp \
+            -e GPG_KEY_ID="${GPG_KEY_ID}" \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd)/community-repo:/community-repo:ro" \
+            -v "$(pwd)/sign-script.sh:/sign-script.sh:ro" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
             bash -c "
               set -e
-              echo '── Building ISO ───────────────────────────────────────'
+
+              echo '── Step 1: Build install.img ──────────────────────────'
+              /create-install-image/scripts/create-installimg.sh \
+                --output /tmp/install-${XCPNG_VER}.img \
+                ${XCPNG_VER}
+
+              echo '── Step 2: Build ISO ──────────────────────────────────'
               /create-install-image/scripts/create-iso.sh \
                 --output /output/${OUTPUT} \
                 --force-overwrite \
                 --define-repo community!file:///community-repo \
-                --sign xcp-ng-ce ${GPG_KEY_ID} \
-                ${XCPNG_VER}
+                --sign-script /sign-script.sh \
+                ${XCPNG_VER} /tmp/install-${XCPNG_VER}.img
+
               echo '✅ ISO build complete'
             "
-      
+
           echo "OUTPUT=${OUTPUT}" >> $GITHUB_ENV
           echo "▶ ISO size: $(ls -lh ${OUTPUT} | awk '{print $5}')"
 

@@ -1,0 +1,222 @@
+name: Build XCP-ng Community Edition ISO
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Required GitHub Actions secrets:
+#   GPG_PRIVATE_KEY  — armored private key (gpg --armor --export-secret-keys)
+#   GPG_PASSPHRASE   — passphrase (empty string if key has no passphrase)
+#
+# Required repo files:
+#   RPM-GPG-KEY-xcp-ng-ce  — community GPG public key (committed to repo root)
+#
+# Required sister repo:
+#   xolite-ce  — must have a published GitHub Release with a signed .rpm asset
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      xcpng_version:
+        description: 'XCP-ng version (e.g. 8.3)'
+        default: '8.3'
+        required: true
+      release_tag:
+        description: 'Release tag (e.g. xcp-ng-ce-20260411)'
+        required: true
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 180
+
+    steps:
+      # ── 0. Checkout xcp-ng-ce-iso ─────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 1. Import GPG key on the runner (needed to export into container) ──
+      - name: Import GPG signing key
+        run: |
+          echo "${GPG_PRIVATE_KEY}" | gpg --batch --import
+          GPG_KEY_ID=$(gpg --list-secret-keys --with-colons \
+            | awk -F: '/^sec/{print $5}' | head -1)
+          echo "GPG_KEY_ID=${GPG_KEY_ID}" >> $GITHUB_ENV
+          echo "▶ GPG key imported: ${GPG_KEY_ID}"
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
+      # ── 2. Clone the official ISO build toolchain ─────────────────────────
+      - name: Clone create-install-image
+        run: |
+          git clone https://github.com/xcp-ng/create-install-image.git
+          echo "▶ Toolchain cloned"
+
+      # ── 3. Inject no-gpgcheck into the XCP-ng version layer ───────────────
+      # This tells the installer to skip per-RPM GPG check at install time.
+      # repo_gpgcheck (metadata) is still enforced via our signed repomd.xml.
+      # This is the officially recommended path for downstream 8.3 builds.
+      - name: Add no-gpgcheck boot parameter to layer
+        run: |
+          LAYER_DIR="create-install-image/layers/${{ github.event.inputs.xcpng_version }}"
+          # Layer directory must exist; abort early if the version is wrong
+          test -d "${LAYER_DIR}" \
+            || (echo "❌ Layer not found: ${LAYER_DIR} — check xcpng_version input"; exit 1)
+          echo "no-gpgcheck" >> "${LAYER_DIR}/installer-bootargs.lst"
+          echo "▶ installer-bootargs.lst:"
+          cat "${LAYER_DIR}/installer-bootargs.lst"
+
+      # ── 4. Fetch the signed community xo-lite RPM from xolite-ce ──────────
+      - name: Fetch community xo-lite RPM
+        run: |
+          RPM_URL=$(curl -sf \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository_owner }}/xolite-ce/releases/latest" \
+            | jq -r '.assets[] | select(.name | endswith(".rpm")) | .browser_download_url')
+
+          test -n "${RPM_URL}" \
+            || (echo "❌ No RPM asset found in xolite-ce latest release"; exit 1)
+
+          wget -q -O community-xo-lite.rpm "${RPM_URL}"
+          RPM_INFO=$(rpm -qp --queryformat '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}' \
+            community-xo-lite.rpm 2>/dev/null)
+          echo "▶ Downloaded: ${RPM_INFO}"
+
+      # ── 5. Build local community RPM repo ─────────────────────────────────
+      # This repo will be passed to the toolchain via --define-repo.
+      # It contains only our xo-lite RPM so yum resolves it over the official one.
+      - name: Create community RPM repo
+        run: |
+          sudo apt-get install -y createrepo-c -qq
+          mkdir -p community-repo
+          cp community-xo-lite.rpm community-repo/
+          createrepo_c community-repo/
+          echo "▶ Community repo contents:"
+          ls -lh community-repo/
+
+      # ── 6. Pull the official XCP-ng build environment container ───────────
+      - name: Pull xcp-ng-build-env
+        run: |
+          docker pull \
+            ghcr.io/xcp-ng/xcp-ng-build-env:${{ github.event.inputs.xcpng_version }}
+
+      # ── 7. Export GPG private key for use inside the container ────────────
+      # The container uses gpg1 (CentOS 7 base) — we export from gpg2 on runner.
+      # The private key is written to a temp file, mounted read-only, then removed.
+      - name: Export GPG key for container
+        run: |
+          gpg --armor --export-secret-keys "${GPG_KEY_ID}" \
+            > /tmp/community-signing.key
+          gpg --armor --export "${GPG_KEY_ID}" \
+            > /tmp/RPM-GPG-KEY-xcp-ng-ce
+          echo "▶ Keys exported for container"
+
+      # ── 8. Build ISO inside the container ─────────────────────────────────
+      # What happens inside:
+      #   a) Install toolchain dependencies
+      #   b) Import our GPG key into gpg1 keyring
+      #   c) Run create-install-iso.sh with:
+      #      --define-repo  → adds community repo (our xo-lite RPM)
+      #      --sign         → signs repomd.xml, exports public key to ISO root
+      #      layer arg      → xcpng_version layer (contains no-gpgcheck)
+      - name: Build ISO
+        run: |
+          XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
+          OUTPUT="xcp-ng-ce-${XCPNG_VER}.iso"
+
+          docker run --rm \
+            -v "$(pwd)/create-install-image:/create-install-image:ro" \
+            -v "$(pwd)/community-repo:/community-repo:ro" \
+            -v "/tmp/community-signing.key:/community-signing.key:ro" \
+            -v "/tmp/RPM-GPG-KEY-xcp-ng-ce:/RPM-GPG-KEY-xcp-ng-ce:ro" \
+            -v "$(pwd):/output" \
+            ghcr.io/xcp-ng/xcp-ng-build-env:${XCPNG_VER} \
+            bash -c "
+              set -e
+
+              echo '── Installing toolchain dependencies ─────────────────────'
+              yum install -y -q \
+                genisoimage syslinux grub-tools createrepo_c libfaketime
+              yum install -y -q --enablerepo=epel gnupg1
+
+              echo '── Importing community GPG key into gpg1 ─────────────────'
+              gpg1 --batch --import /community-signing.key
+              gpg1 --list-secret-keys
+
+              echo '── Building ISO ───────────────────────────────────────────'
+              /create-install-image/scripts/create-install-iso.sh \
+                --output /output/${OUTPUT} \
+                --force-overwrite \
+                --define-repo community!file:///community-repo \
+                --sign xcp-ng-ce ${GPG_KEY_ID} \
+                ${XCPNG_VER}
+
+              echo '✅ ISO build complete'
+            "
+
+          echo "OUTPUT=${OUTPUT}" >> $GITHUB_ENV
+          echo "▶ ISO size: $(ls -lh ${OUTPUT} | awk '{print $5}')"
+
+      # ── 9. Clean up private key from disk ─────────────────────────────────
+      - name: Remove GPG private key temp file
+        if: always()
+        run: shred -u /tmp/community-signing.key || true
+
+      # ── 10. Verify ISO ─────────────────────────────────────────────────────
+      - name: Verify ISO
+        run: |
+          sudo apt-get install -y -qq isomd5sum
+          checkisomd5 "${OUTPUT}"
+          echo "✅ ISO checksum verified: ${OUTPUT}"
+
+      # ── 11. Verify community RPM is in the ISO ────────────────────────────
+      # Confirms our xo-lite replaced the official one.
+      - name: Verify community RPM in ISO
+        run: |
+          mkdir -p /tmp/iso-check
+          xorriso -osirrox on -indev "${OUTPUT}" \
+            -extract /Packages /tmp/iso-check/ 2>/dev/null || true
+
+          echo "── xo-lite RPMs found in ISO ────────────────────────────────"
+          find /tmp/iso-check -name "xo-lite*.rpm" | sort
+
+          # Fail if community release string is absent
+          find /tmp/iso-check -name "xo-lite*.rpm" \
+            | grep -q "community" \
+            || (echo "❌ Community xo-lite RPM not found in ISO"; exit 1)
+
+          echo "✅ Community RPM confirmed in ISO"
+
+      # ── 12. Publish GitHub Release ─────────────────────────────────────────
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: 'XCP-ng Community Edition ${{ github.event.inputs.release_tag }}'
+          body: |
+            ## XCP-ng Community Edition ISO
+
+            Unofficial community build of XCP-ng ${{ github.event.inputs.xcpng_version }}
+            with XO Lite patched to deploy the community XOA image.
+
+            ### What is different
+            - XO Lite built from source — to `lite.xen-orchestra.com` removed
+            - Deploy XOA points to the community image URL
+            - Repo metadata signed with the community GPG key
+            - All other packages are identical to the official XCP-ng ISO
+
+            ### Verify before installing
+            ```bash
+            # Verify ISO checksum
+            checkisomd5 xcp-ng-ce-${{ github.event.inputs.xcpng_version }}.iso
+
+            # Verify community RPM signature
+            rpm --import https://github.com/${{ github.repository_owner }}/xcp-ng-ce-iso/raw/main/RPM-GPG-KEY-xcp-ng-ce
+            rpm --checksig xo-lite-community-*.noarch.rpm
+            ```
+
+            > Community build. Not supported by Vates.
+          files: ${{ env.OUTPUT }}
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

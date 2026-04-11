@@ -127,6 +127,19 @@ jobs:
           EOF
           docker build -f Dockerfile.build -t xcp-ng-build-local .
       
+      - name: Bake GPG key into image
+        run: |
+          # Start a container as root, import key, commit the result as new image
+          CONTAINER_ID=$(docker run -d \
+            --user root \
+            -v "/tmp/community-signing.key:/community-signing.key:ro" \
+            xcp-ng-build-local \
+            bash -c "gpg1 --batch --import /community-signing.key && gpg1 --list-secret-keys")
+          docker wait "${CONTAINER_ID}"
+          docker commit "${CONTAINER_ID}" xcp-ng-build-ready
+          docker rm "${CONTAINER_ID}"
+          echo "▶ Image ready with GPG key baked in"
+      
       - name: Build ISO
         run: |
           XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
@@ -136,16 +149,10 @@ jobs:
             --user "$(id -u):$(id -g)" \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd)/community-repo:/community-repo:ro" \
-            -v "/tmp/community-signing.key:/community-signing.key:ro" \
-            -v "/tmp/RPM-GPG-KEY-xcp-ng-ce:/RPM-GPG-KEY-xcp-ng-ce:ro" \
             -v "$(pwd):/output" \
-            xcp-ng-build-local \
+            xcp-ng-build-ready \
             bash -c "
               set -e
-              echo '── Importing community GPG key ────────────────────────'
-              gpg1 --batch --import /community-signing.key
-              gpg1 --list-secret-keys
-      
               echo '── Building ISO ───────────────────────────────────────'
               /create-install-image/scripts/create-iso.sh \
                 --output /output/${OUTPUT} \

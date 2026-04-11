@@ -21,6 +21,7 @@ on:
         required: true
       release_tag:
         description: 'Release tag (e.g. xcp-ng-ce-20260411)'
+        default: 'xcp-ng-ce-20260411-alpha'
         required: true
 
 jobs:
@@ -139,6 +140,14 @@ jobs:
           docker commit "${CONTAINER_ID}" xcp-ng-build-ready
           docker rm "${CONTAINER_ID}"
           echo "▶ Image ready with GPG key baked in"
+
+      - name: Prepare create-install-image for custom repo
+        run: |
+          # CUSTOMREPO.tmpl lives in configs/base but the script looks in configs/8.3
+          # Copy it into the version layer so find_config resolves it correctly
+          cp create-install-image/configs/base/CUSTOMREPO.tmpl \
+             create-install-image/configs/${{ github.event.inputs.xcpng_version }}/CUSTOMREPO.tmpl
+          echo "▶ CUSTOMREPO.tmpl copied to configs/${{ github.event.inputs.xcpng_version }}/"
 
       - name: Build install.img
         run: |

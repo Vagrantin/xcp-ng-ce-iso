@@ -140,11 +140,30 @@ jobs:
           docker rm "${CONTAINER_ID}"
           echo "▶ Image ready with GPG key baked in"
 
+      - name: Build install.img
+        run: |
+          XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
+      
+          docker run --rm \
+            --user root \
+            -e TMPDIR=/tmp \
+            -v "$(pwd)/create-install-image:/create-install-image:ro" \
+            -v "$(pwd):/output" \
+            xcp-ng-build-ready \
+            bash -c "
+              set -e
+              echo '── Building install.img ───────────────────────────────'
+              /create-install-image/scripts/create-installimg.sh \
+                --output /output/install-${XCPNG_VER}.img \
+                ${XCPNG_VER}
+              echo '✅ install.img built'
+            "
+      
       - name: Build ISO
         run: |
           XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
           OUTPUT="xcp-ng-ce-${XCPNG_VER}.iso"
-
+      
           docker run --rm \
             --user "$(id -u):$(id -g)" \
             -e TMPDIR=/tmp \
@@ -156,25 +175,19 @@ jobs:
             xcp-ng-build-ready \
             bash -c "
               set -e
-
-              echo '── Step 1: Build install.img ──────────────────────────'
-              /create-install-image/scripts/create-installimg.sh \
-                --output /tmp/install-${XCPNG_VER}.img \
-                ${XCPNG_VER}
-
-              echo '── Step 2: Build ISO ──────────────────────────────────'
+              echo '── Building ISO ───────────────────────────────────────'
               /create-install-image/scripts/create-iso.sh \
                 --output /output/${OUTPUT} \
                 --force-overwrite \
                 --define-repo community!file:///community-repo \
                 --sign-script /sign-script.sh \
-                ${XCPNG_VER} /tmp/install-${XCPNG_VER}.img
-
-              echo '✅ ISO build complete'
+                ${XCPNG_VER} /output/install-${XCPNG_VER}.img
+              echo '✅ ISO built'
             "
-
+      
           echo "OUTPUT=${OUTPUT}" >> $GITHUB_ENV
           echo "▶ ISO size: $(ls -lh ${OUTPUT} | awk '{print $5}')"
+
 
       # ── 9. Clean up private key from disk ─────────────────────────────────
       - name: Remove GPG private key temp file

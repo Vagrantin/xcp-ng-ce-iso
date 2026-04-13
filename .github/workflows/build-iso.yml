@@ -58,18 +58,14 @@ jobs:
 
       # ── 3. Inject no-gpgcheck into the XCP-ng version layer ───────────────
       # This tells the installer to skip per-RPM GPG check at install time.
-      # repo_gpgcheck (metadata) is still enforced via our signed repomd.xml.
-      # This is the officially recommended path for downstream 8.3 builds.
       - name: Add no-gpgcheck boot parameter to layer
         run: |
-          LAYER_DIR="create-install-image/layers/${{ github.event.inputs.xcpng_version }}"
-          mkdir -p ${LAYER_DIR}
-          # Layer directory must exist; abort early if the version is wrong
-          test -d "${LAYER_DIR}" \
-            || (echo "❌ Layer not found: ${LAYER_DIR} — check xcpng_version input"; exit 1)
-          echo "no-gpgcheck" >> "${LAYER_DIR}/installer-bootargs.lst"
+          CONFIG_DIR="create-install-image/configs/${{ github.event.inputs.xcpng_version }}"
+          test -d "${CONFIG_DIR}" \
+            || (echo "❌ Config not found: ${CONFIG_DIR} — check xcpng_version input"; exit 1)
+          echo "no-gpgcheck" >> "${CONFIG_DIR}/installer-bootargs.lst"
           echo "▶ installer-bootargs.lst:"
-          cat "${LAYER_DIR}/installer-bootargs.lst"
+          cat "${CONFIG_DIR}/installer-bootargs.lst"
 
       # ── 4. Fetch the signed community xo-lite RPM from xolite-ce ──────────
       - name: Fetch community xo-lite RPM
@@ -155,12 +151,15 @@ jobs:
       
           docker run --rm \
             --user root \
+            -e TMPDIR=/tmp \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
             bash -c "
               set -e
-              export TMPDIR=/tmp
+              echo '── TMPDIR check ───────────────────────────────'
+              echo \"TMPDIR=\${TMPDIR}\"
+              mdir -p /tmp && chmod 1777 /tmp
               echo '── Building install.img ───────────────────────────────'
               /create-install-image/scripts/create-installimg.sh \
                 --output /output/install-${XCPNG_VER}.img \
@@ -184,6 +183,7 @@ jobs:
             xcp-ng-build-ready \
             bash -c "
               set -e
+              mdir -p /tmp && chmod 1777 /tmp
               echo '── Building ISO ───────────────────────────────────────'
               /create-install-image/scripts/create-iso.sh \
                 --output /output/${OUTPUT} \

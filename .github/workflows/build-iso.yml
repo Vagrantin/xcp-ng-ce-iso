@@ -143,7 +143,7 @@ jobs:
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng 
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce 
               ls /etc/pki/rpm-gpg/
-              grep -n 'allmatches' create-install-image/scripts/create-installimg.sh
+              grep 'allmatches' /create-install-image/scripts/create-installimg.sh
 
               /create-install-image/scripts/create-installimg.sh \
                 --output /output/install-${XCPNG_VER}.img \

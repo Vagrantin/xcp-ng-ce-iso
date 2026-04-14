@@ -118,7 +118,6 @@ jobs:
       - name: Patch toolchain with git
         run: |
           # Apply the patch to the cloned toolchain directory
-          ls create-install-image/
           cd create-install-image
           git apply ../patches/multi-key-support.patch
 

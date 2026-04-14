@@ -7,7 +7,7 @@ index 1bba840..264ee17 100755
  ### packages not in 8.2.1 install.img)
  
 -rpm --root="$ROOTFS" --nodeps --erase \
-+rpm --root="$ROOTFS" --nodeps --erase --allmatches \ 
++rpm --root="$ROOTFS" --nodeps --erase --allmatches \
      binutils dracut gpg-pubkey pkgconfig xen-hypervisor
  
  

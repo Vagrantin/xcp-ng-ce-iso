@@ -118,7 +118,6 @@ jobs:
       - name: Patch toolchain with git
         run: |
           # Apply the patch to the cloned toolchain directory
-          ls create-install-image/
           cd create-install-image
           git apply ../patches/multi-key-support.patch
 
@@ -142,16 +141,12 @@ jobs:
             bash -ce "
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng 
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce 
-              ls /etc/pki/rpm-gpg/
-              grep 'allmatches' /create-install-image/scripts/create-installimg.sh
 
               /create-install-image/scripts/create-installimg.sh \
                 --output /output/install-${XCPNG_VER}.img \
                 --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base \
                 --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates \
                 ${XCPNG_VER}
-            ls /output/
-            file /output/install-${XCPNG_VER}.img
             echo 'install.img built'
             "
 
@@ -162,7 +157,7 @@ jobs:
           VOLID="XCP-ng CE ${XCPNG_VER}"
 
           docker run --rm \
-            --user "$(id -u):$(id -g)" -w /tmp \
+            --user "$(id -u):$(id -g)" \
             -e GPG_KEY_ID="${GPG_KEY_ID}" \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd)/community-repo:/community-repo:ro" \

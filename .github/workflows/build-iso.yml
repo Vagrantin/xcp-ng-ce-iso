@@ -117,11 +117,13 @@ jobs:
 
       - name: Patch create-installimg.sh for multiple keys
         run: |
-          # Change 'rpm --erase' to 'rpm --erase --allmatches'
-          # so it handles both the official and community keys gracefully.
-          sed -i 's/rpm --root=\$ROOTFS --erase gpg-pubkey/rpm --root=\$ROOTFS --erase --allmatches gpg-pubkey/' \
+          # Use a broader regex to catch the line regardless of quoting style
+          sed -i 's/rpm --root=.* --erase gpg-pubkey/rpm --root="$ROOTFS" --erase --allmatches gpg-pubkey/' \
             create-install-image/scripts/create-installimg.sh
-          grep -n "allmatches" create-install-image/scripts/create-installimg.sh
+
+          # Verify the patch worked (grep will return 0 if found)
+          grep "allmatches" create-install-image/scripts/create-installimg.sh
+
           
       - name: Build install.img
         run: |

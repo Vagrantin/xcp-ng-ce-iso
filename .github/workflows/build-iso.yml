@@ -105,7 +105,7 @@ jobs:
           mkdir -p create-install-image/configs/${XCPNG_VER}
           
           # Copy your customized template into the toolchain's version-specific config dir
-          cp configs/repo/CUSTOMREPO.tmpl create-install-image/configs/${XCPNG_VER}/COMMUNITYREPO.tmpl
+          cp configs/repo/CUSTOMREPO.tmpl create-install-image/configs/${XCPNG_VER}/CUSTOMREPO.tmpl
           
           echo "▶ Custom repo template deployed for XCP-ng ${XCPNG_VER}"
 

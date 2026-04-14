@@ -118,7 +118,9 @@ jobs:
       - name: Patch toolchain with git
         run: |
           # Apply the patch to the cloned toolchain directory
-          git apply create-install-image/patches/multi-key-support.patch
+          ls create-install-image/
+          cd create-install-image
+          git apply ../patches/multi-key-support.patch
 
           # Verify the change is present
           if grep -q "allmatches" scripts/create-installimg.sh; then

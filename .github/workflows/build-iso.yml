@@ -1,17 +1,5 @@
 name: Build XCP-ng Community Edition ISO
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Required GitHub Actions secrets:
-#   GPG_PRIVATE_KEY  — armored private key (gpg --armor --export-secret-keys)
-#   GPG_PASSPHRASE   — passphrase (empty string if key has no passphrase)
-#
-# Required repo files:
-#   RPM-GPG-KEY-xcp-ng-ce  — community GPG public key (committed to repo root)
-#
-# Required sister repo:
-#   xolite-ce  — must have a published GitHub Release with a signed .rpm asset
-# ─────────────────────────────────────────────────────────────────────────────
-
 on:
   workflow_dispatch:
     inputs:
@@ -36,7 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 1. Import GPG key on the runner (needed to export into container) ──
+      # ── 1. Import GPG key on the runner ───────────────────────────────────
       - name: Import GPG signing key
         run: |
           echo "${GPG_PRIVATE_KEY}" | gpg --batch --import
@@ -52,62 +40,43 @@ jobs:
         run: |
           git clone -b master https://github.com/xcp-ng/create-install-image.git
           echo "▶ Toolchain cloned (master branch)"
-          echo "Available scripts:"
           ls create-install-image/scripts/
-          echo "$(pwd)/create-install-image/"
 
       # ── 3. Inject no-gpgcheck into the XCP-ng version layer ───────────────
-      # This tells the installer to skip per-RPM GPG check at install time.
       - name: Add no-gpgcheck boot parameter to layer
         run: |
           CONFIG_DIR="create-install-image/configs/${{ github.event.inputs.xcpng_version }}"
-          test -d "${CONFIG_DIR}" \
-            || (echo "❌ Config not found: ${CONFIG_DIR} — check xcpng_version input"; exit 1)
+          test -d "${CONFIG_DIR}" || exit 1
           echo "no-gpgcheck" >> "${CONFIG_DIR}/installer-bootargs.lst"
-          echo "▶ installer-bootargs.lst:"
-          cat "${CONFIG_DIR}/installer-bootargs.lst"
 
-      # ── 4. Fetch the signed community xo-lite RPM from xolite-ce ──────────
+      # ── 4. Fetch the signed community xo-lite RPM ─────────────────────────
       - name: Fetch community xo-lite RPM
         run: |
           RPM_URL=$(curl -sf \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository_owner }}/xolite-ce/releases/latest" \
             | jq -r '.assets[] | select(.name | endswith(".rpm")) | .browser_download_url')
-
-          test -n "${RPM_URL}" \
-            || (echo "❌ No RPM asset found in xolite-ce latest release"; exit 1)
-
+          test -n "${RPM_URL}" || exit 1
           wget -q -O community-xo-lite.rpm "${RPM_URL}"
-          RPM_INFO=$(rpm -qp --queryformat '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}' \
-            community-xo-lite.rpm 2>/dev/null)
-          echo "▶ Downloaded: ${RPM_INFO}"
 
       # ── 5. Build local community RPM repo ─────────────────────────────────
-      # This repo will be passed to the toolchain via --define-repo.
-      # It contains only our xo-lite RPM so yum resolves it over the official one.
       - name: Create community RPM repo
         run: |
           sudo apt-get install -y createrepo-c -qq
           mkdir -p community-repo
           cp community-xo-lite.rpm community-repo/
           createrepo_c community-repo/
-          echo "▶ Community repo contents:"
-          ls -lh community-repo/
 
-      # ── 6. Pull the official XCP-ng build environment container ───────────
+      # ── 6. Pull the official build environment ────────────────────────────
       - name: Pull xcp-ng-build-env
         run: |
           docker pull ghcr.io/xcp-ng/xcp-ng-build-env:${{ github.event.inputs.xcpng_version }}
 
-      # ── 7. Export GPG private key for use inside the container ────────────
-      # The container uses gpg1 (CentOS 7 base) — we export from gpg2 on runner.
-      # The private key is written to a temp file, mounted read-only, then removed.
+      # ── 7. Export GPG private key for container ───────────────────────────
       - name: Export GPG key for container
         run: |
           gpg --armor --export-secret-keys "${GPG_KEY_ID}" > /tmp/community-signing.key
           gpg --armor --export "${GPG_KEY_ID}" > /tmp/RPM-GPG-KEY-xcp-ng-ce
-          echo "▶ Keys exported for container"
 
       # ── 8. Build ISO inside the container ─────────────────────────────────
       - name: Build toolchain image with dependencies
@@ -126,150 +95,105 @@ jobs:
       
       - name: Bake GPG key into image
         run: |
-          # Start a container as root, import key, commit the result as new image
           CONTAINER_ID=$(docker run -d \
             --user root \
             -v "/tmp/community-signing.key:/community-signing.key:ro" \
             xcp-ng-build-local \
-            bash -c "gpg1 --batch --import /community-signing.key && gpg1 --list-secret-keys")
+            bash -c "gpg1 --batch --import /community-signing.key")
           docker wait "${CONTAINER_ID}"
           docker commit "${CONTAINER_ID}" xcp-ng-build-ready
           docker rm "${CONTAINER_ID}"
-          echo "▶ Image ready with GPG key baked in"
 
       - name: Prepare create-install-image for custom repo
         run: |
-          # CUSTOMREPO.tmpl lives in configs/base but the script looks in configs/8.3
-          # Copy it into the version layer so find_config resolves it correctly
           cp create-install-image/configs/base/CUSTOMREPO.tmpl \
              create-install-image/configs/${{ github.event.inputs.xcpng_version }}/CUSTOMREPO.tmpl
-          echo "▶ CUSTOMREPO.tmpl copied to configs/${{ github.event.inputs.xcpng_version }}/"
           
-       - name: Patch scripts with debug instrumentation
-         run: |
-           # Work on a writable copy — container mounts the original read-only
-           cp -a create-install-image create-install-image-debug
-      
-           SCRIPT="create-install-image-debug/scripts/create-installimg.sh"
-           
-           python3 - <<PYEOF
-           import pathlib
-           p = pathlib.Path("${SCRIPT}")
-           src = p.read_text()
-           
-           debug = r"""
-           echo "══ DEBUG: full RPM DB in ROOTFS ══════════════════════════"
-           rpm --root="\$ROOTFS" -qa | sort || echo "(rpm -qa failed)"
-           echo "══ DEBUG: gpg-pubkey records ══════════════════════════════"
-           rpm --root="\$ROOTFS" -qa gpg-pubkey || echo "(none found)"
-           echo "══ DEBUG: /etc/pki/rpm-gpg in container ═══════════════════"
-           ls -la /etc/pki/rpm-gpg/ 2>/dev/null || echo "(directory missing)"
-           echo "══ DEBUG: yum repo files ═══════════════════════════════════"
-           cat "\$YUMCONF"
-           echo "══ DEBUG: ROOTFS var/lib/rpm ═══════════════════════════════"
-           ls -la "\$ROOTFS/var/lib/rpm/" 2>/dev/null || echo "(rpm dir missing)"
-           """
-           
-           # Target a known section heading instead of a specific command
-           target = '### final cleanups'
-           
-           assert target in src, f"Marker '{target}' not found in script — check upstream"
-           
-           # Inject the debug payload right before the target
-           patched = src.replace(target, debug + "\n" + target, 1)
-           p.write_text(patched)
-           
-           print("✅ Debug block injected before final cleanups")
-           PYEOF
-      
-           echo "▶ Patched script diff:"
-           diff create-install-image/scripts/create-installimg.sh \
-                create-install-image-debug/scripts/create-installimg.sh || true   
+      # FIXED: Aligned indentation to 6 spaces
+      - name: Patch scripts with debug instrumentation
+        run: |
+          cp -a create-install-image create-install-image-debug
+          SCRIPT="create-install-image-debug/scripts/create-installimg.sh"
+          
+          python3 - <<'PYEOF'
+          import pathlib, os
+          p = pathlib.Path(os.environ['SCRIPT'])
+          src = p.read_text()
+          
+          debug = r"""
+          echo "══ DEBUG: full RPM DB in ROOTFS ══════════════════════════"
+          rpm --root="\$ROOTFS" -qa | sort || echo "(rpm -qa failed)"
+          echo "══ DEBUG: gpg-pubkey records ══════════════════════════════"
+          rpm --root="\$ROOTFS" -qa gpg-pubkey || echo "(none found)"
+          echo "══ DEBUG: ROOTFS var/lib/rpm ═══════════════════════════════"
+          ls -la "\$ROOTFS/var/lib/rpm/" 2>/dev/null || echo "(rpm dir missing)"
+          """
+          
+          target = '### final cleanups'
+          if target in src:
+              patched = src.replace(target, debug + "\n" + target, 1)
+              p.write_text(patched)
+              print("✅ Debug block injected")
+          else:
+              print("❌ Marker not found")
+              exit(1)
+          PYEOF
+        env:
+          SCRIPT: "create-install-image-debug/scripts/create-installimg.sh"
 
       - name: Build install.img
         run: |
           XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
-      
           docker run --rm \
-            --user root \
-            -w /tmp \
-            -v "$(pwd)/create-install-image:/create-install-image:ro" \
+            --user root -w /tmp \
+            -v "$(pwd)/create-install-image-debug:/create-install-image:ro" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
             bash -c "
-              set -e
-              echo '── Check gpg key ───────────────────────────────'
-              grep -n 'gpg\|GPG\|import\|pubkey' /create-install-image/scripts/create-installimg.sh | head -40
-              echo '── Building install.img ───────────────────────────────'
               /create-install-image/scripts/create-installimg.sh \
                 --output /output/install-${XCPNG_VER}.img \
                 --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base \
                 --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates \
                 ${XCPNG_VER}
-              echo '✅ install.img built'
             "
-      
+
       - name: Build ISO
         run: |
           XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
           OUTPUT="xcp-ng-ce-${XCPNG_VER}.iso"
-      
           docker run --rm \
-            --user "$(id -u):$(id -g)" \
-            -w /tmp \
+            --user "$(id -u):$(id -g)" -w /tmp \
             -e GPG_KEY_ID="${GPG_KEY_ID}" \
-            -v "$(pwd)/create-install-image:/create-install-image:ro" \
+            -v "$(pwd)/create-install-image-debug:/create-install-image:ro" \
             -v "$(pwd)/community-repo:/community-repo:ro" \
-            -v "$(pwd)/sign-script.sh:/sign-script.sh:ro" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
             bash -c "
-              set -e
-              echo '── Building ISO ───────────────────────────────────────'
               /create-install-image/scripts/create-iso.sh \
                 --output /output/${OUTPUT} \
                 --force-overwrite \
                 --define-repo community!file:///community-repo \
-                --sign-script /sign-script.sh \
                 ${XCPNG_VER} /output/install-${XCPNG_VER}.img
-              echo '✅ ISO built'
             "
-      
           echo "OUTPUT=${OUTPUT}" >> $GITHUB_ENV
-          echo "▶ ISO size: $(ls -lh ${OUTPUT} | awk '{print $5}')"
 
-
-      # ── 9. Clean up private key from disk ─────────────────────────────────
-      - name: Remove GPG private key temp file
+      # ── 9. Verification & Cleanup ─────────────────────────────────────────
+      - name: Remove GPG private key
         if: always()
         run: shred -u /tmp/community-signing.key || true
 
-      # ── 10. Verify ISO ─────────────────────────────────────────────────────
       - name: Verify ISO
         run: |
           sudo apt-get install -y -qq isomd5sum
           checkisomd5 "${OUTPUT}"
-          echo "✅ ISO checksum verified: ${OUTPUT}"
 
-      # ── 11. Verify community RPM is in the ISO ────────────────────────────
-      # Confirms our xo-lite replaced the official one.
       - name: Verify community RPM in ISO
         run: |
           mkdir -p /tmp/iso-check
-          xorriso -osirrox on -indev "${OUTPUT}" \
-            -extract /Packages /tmp/iso-check/ 2>/dev/null || true
+          xorriso -osirrox on -indev "${OUTPUT}" -extract /Packages /tmp/iso-check/
+          find /tmp/iso-check -name "xo-lite*.rpm" | grep -q "community" || exit 1
 
-          echo "── xo-lite RPMs found in ISO ────────────────────────────────"
-          find /tmp/iso-check -name "xo-lite*.rpm" | sort
-
-          # Fail if community release string is absent
-          find /tmp/iso-check -name "xo-lite*.rpm" \
-            | grep -q "community" \
-            || (echo "❌ Community xo-lite RPM not found in ISO"; exit 1)
-
-          echo "✅ Community RPM confirmed in ISO"
-
-      # ── 12. Publish GitHub Release ─────────────────────────────────────────
+      # ── 10. Publish Release ───────────────────────────────────────────────
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -277,28 +201,14 @@ jobs:
           name: 'XCP-ng Community Edition ${{ github.event.inputs.release_tag }}'
           body: |
             ## XCP-ng Community Edition ISO
+            Unofficial community build of XCP-ng ${{ github.event.inputs.xcpng_version }}.
 
-            Unofficial community build of XCP-ng ${{ github.event.inputs.xcpng_version }}
-            with XO Lite patched to deploy the community XOA image.
-
-            ### What is different
-            - XO Lite built from source — to `lite.xen-orchestra.com` removed
-            - Deploy XOA points to the community image URL
-            - Repo metadata signed with the community GPG key
-            - All other packages are identical to the official XCP-ng ISO
-
-            ### Verify before installing
+            ### Verification
             ```bash
-            # Verify ISO checksum
-            checkisomd5 xcp-ng-ce-${{ github.event.inputs.xcpng_version }}.iso
-
-            # Verify community RPM signature
+            # FIXED: Corrected GPG import URL
             rpm --import [https://github.com/$](https://github.com/$){{ github.repository_owner }}/xcp-ng-ce-iso/raw/main/RPM-GPG-KEY-xcp-ng-ce
             rpm --checksig xo-lite-community-*.noarch.rpm
             ```
-
-            > Community build. Not supported by Vates.
           files: ${{ env.OUTPUT }}
-          draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

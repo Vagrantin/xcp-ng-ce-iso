@@ -113,7 +113,7 @@ jobs:
         run: |
           mkdir -p create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
           cp /tmp/RPM-GPG-KEY-xcp-ng-ce create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
-          curl -sL https://xcp-ng.org/RPM-GPG-KEY-xcpng -o create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
+          curl -sL https://xcp-ng.org/RPM-GPG-KEY-xcpng -o create-install-image/templates/installimg/base/etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng
           
       - name: Build install.img
         run: |

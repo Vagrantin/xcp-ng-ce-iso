@@ -160,12 +160,11 @@ jobs:
             xcp-ng-build-ready \
             bash -c "
               set -e
-              echo '── TMPDIR check ───────────────────────────────'
-              echo \"TMPDIR=\${TMPDIR}\"
-              mkdir -p /tmp && chmod 1777 /tmp
               echo '── Building install.img ───────────────────────────────'
               /create-install-image/scripts/create-installimg.sh \
                 --output /output/install-${XCPNG_VER}.img \
+                --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base/x86_64/ \
+                --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates/x86_64/ \
                 ${XCPNG_VER}
               echo '✅ install.img built'
             "
@@ -186,7 +185,6 @@ jobs:
             xcp-ng-build-ready \
             bash -c "
               set -e
-              mkdir -p /tmp && chmod 1777 /tmp
               echo '── Building ISO ───────────────────────────────────────'
               /create-install-image/scripts/create-iso.sh \
                 --output /output/${OUTPUT} \

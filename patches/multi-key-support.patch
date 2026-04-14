@@ -1,9 +1,11 @@
 --- a/scripts/create-installimg.sh
 +++ b/scripts/create-installimg.sh
-@@ -148,4 +148,4 @@
+@@ -120,7 +120,7 @@ 
+
+### removal of abusively-pulled packages (list manually extracted as
+### packages not in 8.2.1 install.img)
  
- ### final cleanups
- rm -rf $ROOTFS/var/lib/yum/ \
-        $ROOTFS/var/cache/yum/
--rpm --root="$ROOTFS" --erase gpg-pubkey
-+rpm --root="$ROOTFS" --erase --allmatches gpg-pubkey
+-rpm --root="$ROOTFS" --nodeps --erase \
++rpm --root="$ROOTFS" --nodeps --erase --allmatches \
+ 
+ 

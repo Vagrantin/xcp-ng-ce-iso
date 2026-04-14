@@ -170,7 +170,8 @@ jobs:
           echo "══ DEBUG: gpg keys in container gnupg keyring ══════════════"
           gpg --list-keys 2>/dev/null || echo "(no gpg keys)"
           echo "══════════════════════════════════════════════════════════════"
-          DEBUGEOF)
+      DEBUGEOF
+          )
       
           # Insert before the rpm --nodeps --erase line
           SCRIPT="create-install-image-debug/scripts/create-installimg.sh"
@@ -196,7 +197,7 @@ jobs:
           patched = src.replace(target, debug + "\n" + target, 1)
           p.write_text(patched)
           print("✅ Debug block injected before rpm --erase")
-          PYEOF
+      PYEOF
       
           echo "▶ Patched script diff:"
           diff create-install-image/scripts/create-installimg.sh \

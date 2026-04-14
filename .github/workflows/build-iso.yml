@@ -120,9 +120,12 @@ jobs:
           docker run --rm \
             --user root -w /tmp \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
+            -v "$(pwd)/tmp/RPM-GPG-KEY-xcp-ng-ce:/etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
             bash -c "
+              rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce 
+
               /create-install-image/scripts/create-installimg.sh \
                 --output /output/install-${XCPNG_VER}.img \
                 --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base \
@@ -135,6 +138,8 @@ jobs:
         run: |
           XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
           OUTPUT="xcp-ng-ce-${XCPNG_VER}.iso"
+          VOLID="XCP-ng CE ${XCPNG_VER}"
+
           docker run --rm \
             --user "$(id -u):$(id -g)" -w /tmp \
             -e GPG_KEY_ID="${GPG_KEY_ID}" \
@@ -144,6 +149,7 @@ jobs:
             xcp-ng-build-ready \
             bash -c "
               /create-install-image/scripts/create-iso.sh \
+                -V \"${VOLID}\" \
                 --output /output/${OUTPUT} \
                 --force-overwrite \
                 --define-repo community!file:///community-repo \

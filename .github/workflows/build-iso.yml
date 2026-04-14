@@ -105,7 +105,7 @@ jobs:
           mkdir -p create-install-image/configs/${XCPNG_VER}
           
           # Copy your customized template into the toolchain's version-specific config dir
-          cp configs/repo/CUSTOMREPO.tmpl create-install-image/configs/${XCPNG_VER}/CUSTOMREPO.tmpl
+          cp configs/repo/CUSTOMREPO.tmpl create-install-image/configs/${XCPNG_VER}/COMMUNITYREPO.tmpl
           
           echo "▶ Custom repo template deployed for XCP-ng ${XCPNG_VER}"
 
@@ -113,6 +113,7 @@ jobs:
         run: |
           mkdir -p create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
           cp /tmp/RPM-GPG-KEY-xcp-ng-ce create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
+          curl -sL https://xcp-ng.org/RPM-GPG-KEY-xcpng -o create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
           
       - name: Build install.img
         run: |
@@ -123,7 +124,7 @@ jobs:
             -v "/tmp/RPM-GPG-KEY-xcp-ng-ce:/etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
-            bash -c "
+            bash -ce "
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng 
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce 
               ls /etc/pki/rpm-gpg/

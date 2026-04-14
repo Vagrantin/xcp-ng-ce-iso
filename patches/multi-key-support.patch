@@ -1,11 +1,13 @@
+diff --git a/scripts/create-installimg.sh b/scripts/create-installimg.sh
+index 1bba840..264ee17 100755
 --- a/scripts/create-installimg.sh
 +++ b/scripts/create-installimg.sh
-@@ -120,7 +120,7 @@ 
-
-### removal of abusively-pulled packages (list manually extracted as
-### packages not in 8.2.1 install.img)
+@@ -120,7 +120,7 @@ sed "s/#.*//" < "$PACKAGES_LST" |
+ ### removal of abusively-pulled packages (list manually extracted as
+ ### packages not in 8.2.1 install.img)
  
 -rpm --root="$ROOTFS" --nodeps --erase \
-+rpm --root="$ROOTFS" --nodeps --erase --allmatches \
++rpm --root="$ROOTFS" --nodeps --erase --allmatches \ 
+     binutils dracut gpg-pubkey pkgconfig xen-hypervisor
  
  

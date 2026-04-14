@@ -121,6 +121,7 @@ jobs:
           RUN yum install -y -q \
                 genisoimage syslinux grub-tools createrepo_c libfaketime && \
               yum install -y -q --enablerepo=epel gnupg1
+          RUN rpm --import https://updates.xcp-ng.org/RPM-GPG-KEY-xcpng
           EOF
           docker build -f Dockerfile.build -t xcp-ng-build-local .
       

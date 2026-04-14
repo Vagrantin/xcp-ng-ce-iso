@@ -121,6 +121,7 @@ jobs:
           # so it handles both the official and community keys gracefully.
           sed -i 's/rpm --root=\$ROOTFS --erase gpg-pubkey/rpm --root=\$ROOTFS --erase --allmatches gpg-pubkey/' \
             create-install-image/scripts/create-installimg.sh
+          grep -n "allmatches" create-install-image/scripts/create-installimg.sh
           
       - name: Build install.img
         run: |
@@ -135,6 +136,7 @@ jobs:
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng 
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce 
               ls /etc/pki/rpm-gpg/
+              grep -n 'allmatches' create-install-image/scripts/create-installimg.sh
 
               /create-install-image/scripts/create-installimg.sh \
                 --output /output/install-${XCPNG_VER}.img \

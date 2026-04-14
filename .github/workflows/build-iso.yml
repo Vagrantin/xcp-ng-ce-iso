@@ -114,6 +114,13 @@ jobs:
           mkdir -p create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
           cp /tmp/RPM-GPG-KEY-xcp-ng-ce create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
           curl -sL https://xcp-ng.org/RPM-GPG-KEY-xcpng -o create-install-image/templates/installimg/base/etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng
+
+      - name: Patch create-installimg.sh for multiple keys
+        run: |
+          # Change 'rpm --erase' to 'rpm --erase --allmatches'
+          # so it handles both the official and community keys gracefully.
+          sed -i 's/rpm --root=\$ROOTFS --erase gpg-pubkey/rpm --root=\$ROOTFS --erase --allmatches gpg-pubkey/' \
+            create-install-image/scripts/create-installimg.sh
           
       - name: Build install.img
         run: |

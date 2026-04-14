@@ -13,6 +13,9 @@ name: Build XCP-ng Community Edition ISO
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       xcpng_version:
@@ -151,7 +154,7 @@ jobs:
       
           docker run --rm \
             --user root \
-            -e TMPDIR=/tmp \
+            -w /tmp \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
@@ -174,7 +177,7 @@ jobs:
       
           docker run --rm \
             --user "$(id -u):$(id -g)" \
-            -e TMPDIR=/tmp \
+            -w /tmp \
             -e GPG_KEY_ID="${GPG_KEY_ID}" \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd)/community-repo:/community-repo:ro" \

@@ -145,60 +145,46 @@ jobs:
              create-install-image/configs/${{ github.event.inputs.xcpng_version }}/CUSTOMREPO.tmpl
           echo "▶ CUSTOMREPO.tmpl copied to configs/${{ github.event.inputs.xcpng_version }}/"
           
-      - name: Patch scripts with debug instrumentation
-        run: |
-          # Work on a writable copy — container mounts the original read-only
-          cp -a create-install-image create-install-image-debug
+       - name: Patch scripts with debug instrumentation
+         run: |
+           # Work on a writable copy — container mounts the original read-only
+           cp -a create-install-image create-install-image-debug
       
-          # ── Injection point 1: after yum install, before rpm --erase ──────────
-          # Dumps the full ROOTFS RPM DB and checks whether gpg-pubkey is present
-          DEBUG_BLOCK=$(cat <<'DEBUGEOF'
-          echo "══ DEBUG: full RPM DB in ROOTFS ══════════════════════════"
-          rpm --root="$ROOTFS" -qa | sort || echo "(rpm -qa failed)"
-          echo "══ DEBUG: gpg-pubkey records ══════════════════════════════"
-          rpm --root="$ROOTFS" -qa gpg-pubkey || echo "(none found — erase will fail)"
-          echo "══ DEBUG: /etc/pki/rpm-gpg in container ═══════════════════"
-          ls -la /etc/pki/rpm-gpg/ 2>/dev/null || echo "(directory missing)"
-          echo "══ DEBUG: yum repo files used ══════════════════════════════"
-          cat "$YUMCONF"
-          for f in "$YUMREPOSD"/*.repo; do echo "── $f ──"; cat "$f"; done
-          echo "══ DEBUG: ROOTFS var/lib/rpm contents ══════════════════════"
-          ls -la "$ROOTFS/var/lib/rpm/" 2>/dev/null || echo "(rpm dir missing)"
-          echo "══ DEBUG: gpg keys in container gnupg keyring ══════════════"
-          gpg --list-keys 2>/dev/null || echo "(no gpg keys)"
-          echo "══════════════════════════════════════════════════════════════"
-          DEBUGEOF
-          )
+           SCRIPT="create-install-image-debug/scripts/create-installimg.sh"
+           
+           python3 - <<PYEOF
+           import pathlib
+           p = pathlib.Path("${SCRIPT}")
+           src = p.read_text()
+           
+           debug = r"""
+           echo "══ DEBUG: full RPM DB in ROOTFS ══════════════════════════"
+           rpm --root="\$ROOTFS" -qa | sort || echo "(rpm -qa failed)"
+           echo "══ DEBUG: gpg-pubkey records ══════════════════════════════"
+           rpm --root="\$ROOTFS" -qa gpg-pubkey || echo "(none found)"
+           echo "══ DEBUG: /etc/pki/rpm-gpg in container ═══════════════════"
+           ls -la /etc/pki/rpm-gpg/ 2>/dev/null || echo "(directory missing)"
+           echo "══ DEBUG: yum repo files ═══════════════════════════════════"
+           cat "\$YUMCONF"
+           echo "══ DEBUG: ROOTFS var/lib/rpm ═══════════════════════════════"
+           ls -la "\$ROOTFS/var/lib/rpm/" 2>/dev/null || echo "(rpm dir missing)"
+           """
+           
+           # Target a known section heading instead of a specific command
+           target = '### final cleanups'
+           
+           assert target in src, f"Marker '{target}' not found in script — check upstream"
+           
+           # Inject the debug payload right before the target
+           patched = src.replace(target, debug + "\n" + target, 1)
+           p.write_text(patched)
+           
+           print("✅ Debug block injected before final cleanups")
+           PYEOF
       
-          # Insert before the rpm --nodeps --erase line
-          SCRIPT="create-install-image-debug/scripts/create-installimg.sh"
-          MARKER='rpm --root="$ROOTFS" --nodeps --erase'
-          python3 - <<PYEOF
-          import re, pathlib
-          p = pathlib.Path("${SCRIPT}")
-          src = p.read_text()
-          debug = r"""
-          echo "══ DEBUG: full RPM DB in ROOTFS ══════════════════════════"
-          rpm --root="\$ROOTFS" -qa | sort || echo "(rpm -qa failed)"
-          echo "══ DEBUG: gpg-pubkey records ══════════════════════════════"
-          rpm --root="\$ROOTFS" -qa gpg-pubkey || echo "(none found — erase will fail)"
-          echo "══ DEBUG: /etc/pki/rpm-gpg in container ═══════════════════"
-          ls -la /etc/pki/rpm-gpg/ 2>/dev/null || echo "(directory missing)"
-          echo "══ DEBUG: yum repo files ═══════════════════════════════════"
-          cat "\$YUMCONF"
-          echo "══ DEBUG: ROOTFS var/lib/rpm ═══════════════════════════════"
-          ls -la "\$ROOTFS/var/lib/rpm/" 2>/dev/null || echo "(rpm dir missing)"
-          """
-          target = 'rpm --root="$ROOTFS" --nodeps --erase'
-          assert target in src, f"Marker not found in script — check upstream"
-          patched = src.replace(target, debug + "\n" + target, 1)
-          p.write_text(patched)
-          print("✅ Debug block injected before rpm --erase")
-          PYEOF
-      
-          echo "▶ Patched script diff:"
-          diff create-install-image/scripts/create-installimg.sh \
-               create-install-image-debug/scripts/create-installimg.sh || true
+           echo "▶ Patched script diff:"
+           diff create-install-image/scripts/create-installimg.sh \
+                create-install-image-debug/scripts/create-installimg.sh || true   
 
       - name: Build install.img
         run: |

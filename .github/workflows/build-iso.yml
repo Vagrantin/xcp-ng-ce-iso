@@ -138,7 +138,7 @@ jobs:
           docker run --rm \
             --user "$(id -u):$(id -g)" -w /tmp \
             -e GPG_KEY_ID="${GPG_KEY_ID}" \
-            -v "$(pwd)/create-install-image-debug:/create-install-image:ro" \
+            -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd)/community-repo:/community-repo:ro" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \

@@ -122,7 +122,7 @@ jobs:
           XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
           docker run --rm \
             --user root -w /tmp \
-            -v "$(pwd)/create-install-image-debug:/create-install-image:ro" \
+            -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
             bash -c "
@@ -131,6 +131,7 @@ jobs:
                 --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base \
                 --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates \
                 ${XCPNG_VER}
+            echo ' install.img built'
             "
 
       - name: Build ISO

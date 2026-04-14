@@ -42,21 +42,6 @@ jobs:
           echo "▶ Toolchain cloned (master branch)"
           ls create-install-image/scripts/
 
-      - name: Overlay debug scripts
-        run: |
-          cp scripts/debug/create-installimg.sh \
-             create-install-image/scripts/create-installimg.sh
-          cp scripts/debug/misc.sh \
-             create-install-image/scripts/lib/misc.sh
-          echo "▶ Debug scripts overlaid"
-
-      # ── 3. Inject no-gpgcheck into the XCP-ng version layer ───────────────
-      - name: Add no-gpgcheck boot parameter to layer
-        run: |
-          CONFIG_DIR="create-install-image/configs/${{ github.event.inputs.xcpng_version }}"
-          test -d "${CONFIG_DIR}" || exit 1
-          echo "no-gpgcheck" >> "${CONFIG_DIR}/installer-bootargs.lst"
-
       # ── 4. Fetch the signed community xo-lite RPM ─────────────────────────
       - name: Fetch community xo-lite RPM
         run: |
@@ -68,12 +53,14 @@ jobs:
           wget -q -O community-xo-lite.rpm "${RPM_URL}"
 
       # ── 5. Build local community RPM repo ─────────────────────────────────
-      - name: Create community RPM repo
+      - name: Create and Sign community RPM repo
         run: |
           sudo apt-get install -y createrepo-c -qq
           mkdir -p community-repo
           cp community-xo-lite.rpm community-repo/
           createrepo_c community-repo/
+          #Sign the metadata of the community repo
+          gpg --detach-sign --armor community-repo/repodata/repomd.xml
 
       # ── 6. Pull the official build environment ────────────────────────────
       - name: Pull xcp-ng-build-env
@@ -95,9 +82,8 @@ jobs:
           RUN yum install -y -q \
                 genisoimage syslinux grub-tools createrepo_c libfaketime && \
               yum install -y -q --enablerepo=epel gnupg1 && \
-              curl -sL https://raw.githubusercontent.com/xcp-ng/xcp-ng-release/master/src/common/etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng \
-              -o /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng && \
-              rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng
+              curl -sL https://xcp-ng.org/RPM-GPG-KEY-xcpng \
+              -o /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng 
           EOF
           docker build -f Dockerfile.build -t xcp-ng-build-local .
       
@@ -114,8 +100,19 @@ jobs:
 
       - name: Prepare create-install-image for custom repo
         run: |
-          cp create-install-image/configs/base/CUSTOMREPO.tmpl \
-             create-install-image/configs/${{ github.event.inputs.xcpng_version }}/CUSTOMREPO.tmpl
+          XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
+          # Ensure the destination directory exists for the specific version
+          mkdir -p create-install-image/configs/${XCPNG_VER}
+          
+          # Copy your customized template into the toolchain's version-specific config dir
+          cp configs/repo/CUSTOMREPO.tmpl create-install-image/configs/${XCPNG_VER}/CUSTOMREPO.tmpl
+          
+          echo "▶ Custom repo template deployed for XCP-ng ${XCPNG_VER}"
+
+      - name: Inject Community GPG key into toolchain templates
+        run: |
+          mkdir -p create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
+          cp /tmp/RPM-GPG-KEY-xcp-ng-ce create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
           
       - name: Build install.img
         run: |

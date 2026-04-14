@@ -98,18 +98,15 @@ jobs:
       # ── 6. Pull the official XCP-ng build environment container ───────────
       - name: Pull xcp-ng-build-env
         run: |
-          docker pull \
-            ghcr.io/xcp-ng/xcp-ng-build-env:${{ github.event.inputs.xcpng_version }}
+          docker pull ghcr.io/xcp-ng/xcp-ng-build-env:${{ github.event.inputs.xcpng_version }}
 
       # ── 7. Export GPG private key for use inside the container ────────────
       # The container uses gpg1 (CentOS 7 base) — we export from gpg2 on runner.
       # The private key is written to a temp file, mounted read-only, then removed.
       - name: Export GPG key for container
         run: |
-          gpg --armor --export-secret-keys "${GPG_KEY_ID}" \
-            > /tmp/community-signing.key
-          gpg --armor --export "${GPG_KEY_ID}" \
-            > /tmp/RPM-GPG-KEY-xcp-ng-ce
+          gpg --armor --export-secret-keys "${GPG_KEY_ID}" > /tmp/community-signing.key
+          gpg --armor --export "${GPG_KEY_ID}" > /tmp/RPM-GPG-KEY-xcp-ng-ce
           echo "▶ Keys exported for container"
 
       # ── 8. Build ISO inside the container ─────────────────────────────────
@@ -170,12 +167,12 @@ jobs:
           echo "══ DEBUG: gpg keys in container gnupg keyring ══════════════"
           gpg --list-keys 2>/dev/null || echo "(no gpg keys)"
           echo "══════════════════════════════════════════════════════════════"
-      DEBUGEOF
+          DEBUGEOF
           )
       
           # Insert before the rpm --nodeps --erase line
           SCRIPT="create-install-image-debug/scripts/create-installimg.sh"
-          MARKER='rpm --root="\$ROOTFS" --nodeps --erase'
+          MARKER='rpm --root="$ROOTFS" --nodeps --erase'
           python3 - <<PYEOF
           import re, pathlib
           p = pathlib.Path("${SCRIPT}")
@@ -197,7 +194,7 @@ jobs:
           patched = src.replace(target, debug + "\n" + target, 1)
           p.write_text(patched)
           print("✅ Debug block injected before rpm --erase")
-      PYEOF
+          PYEOF
       
           echo "▶ Patched script diff:"
           diff create-install-image/scripts/create-installimg.sh \
@@ -310,7 +307,7 @@ jobs:
             checkisomd5 xcp-ng-ce-${{ github.event.inputs.xcpng_version }}.iso
 
             # Verify community RPM signature
-            rpm --import https://github.com/${{ github.repository_owner }}/xcp-ng-ce-iso/raw/main/RPM-GPG-KEY-xcp-ng-ce
+            rpm --import [https://github.com/$](https://github.com/$){{ github.repository_owner }}/xcp-ng-ce-iso/raw/main/RPM-GPG-KEY-xcp-ng-ce
             rpm --checksig xo-lite-community-*.noarch.rpm
             ```
 

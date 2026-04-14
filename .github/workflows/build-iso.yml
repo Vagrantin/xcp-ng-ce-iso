@@ -13,9 +13,6 @@ name: Build XCP-ng Community Edition ISO
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       xcpng_version:

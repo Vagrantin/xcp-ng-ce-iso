@@ -117,8 +117,6 @@ jobs:
       - name: Build install.img
         run: |
           XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
-          echo "check where is my key"
-          cat /tmp/RPM-GPG-KEY-xcp-ng-ce
           docker run --rm \
             --user root -w /tmp \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
@@ -126,8 +124,6 @@ jobs:
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
             bash -c "
-              echo 'check where is my key in the container'
-              cat /etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce 
 
               /create-install-image/scripts/create-installimg.sh \
@@ -135,6 +131,8 @@ jobs:
                 --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base \
                 --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates \
                 ${XCPNG_VER}
+            ls /output/install-${XCPNG_VER}.img
+            file /output/install-${XCPNG_VER}.img
             echo 'install.img built'
             "
 

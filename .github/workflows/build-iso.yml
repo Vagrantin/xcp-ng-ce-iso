@@ -42,6 +42,14 @@ jobs:
           echo "▶ Toolchain cloned (master branch)"
           ls create-install-image/scripts/
 
+      - name: Overlay debug scripts
+        run: |
+          cp scripts/debug/create-installimg.sh \
+             create-install-image/scripts/create-installimg.sh
+          cp scripts/debug/misc.sh \
+             create-install-image/scripts/lib/misc.sh
+          echo "▶ Debug scripts overlaid"
+
       # ── 3. Inject no-gpgcheck into the XCP-ng version layer ───────────────
       - name: Add no-gpgcheck boot parameter to layer
         run: |
@@ -109,38 +117,6 @@ jobs:
           cp create-install-image/configs/base/CUSTOMREPO.tmpl \
              create-install-image/configs/${{ github.event.inputs.xcpng_version }}/CUSTOMREPO.tmpl
           
-      # FIXED: Aligned indentation to 6 spaces
-      - name: Patch scripts with debug instrumentation
-        run: |
-          cp -a create-install-image create-install-image-debug
-          SCRIPT="create-install-image-debug/scripts/create-installimg.sh"
-          
-          python3 - <<'PYEOF'
-          import pathlib, os
-          p = pathlib.Path(os.environ['SCRIPT'])
-          src = p.read_text()
-          
-          debug = r"""
-          echo "══ DEBUG: full RPM DB in ROOTFS ══════════════════════════"
-          rpm --root="\$ROOTFS" -qa | sort || echo "(rpm -qa failed)"
-          echo "══ DEBUG: gpg-pubkey records ══════════════════════════════"
-          rpm --root="\$ROOTFS" -qa gpg-pubkey || echo "(none found)"
-          echo "══ DEBUG: ROOTFS var/lib/rpm ═══════════════════════════════"
-          ls -la "\$ROOTFS/var/lib/rpm/" 2>/dev/null || echo "(rpm dir missing)"
-          """
-          
-          target = '### final cleanups'
-          if target in src:
-              patched = src.replace(target, debug + "\n" + target, 1)
-              p.write_text(patched)
-              print("✅ Debug block injected")
-          else:
-              print("❌ Marker not found")
-              exit(1)
-          PYEOF
-        env:
-          SCRIPT: "create-install-image-debug/scripts/create-installimg.sh"
-
       - name: Build install.img
         run: |
           XCPNG_VER="${{ github.event.inputs.xcpng_version }}"

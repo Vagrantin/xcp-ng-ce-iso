@@ -160,8 +160,8 @@ jobs:
               echo '── Building install.img ───────────────────────────────'
               /create-install-image/scripts/create-installimg.sh \
                 --output /output/install-${XCPNG_VER}.img \
-                --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base/x86_64/ \
-                --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates/x86_64/ \
+                --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base \
+                --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates \
                 ${XCPNG_VER}
               echo '✅ install.img built'
             "

@@ -120,7 +120,7 @@ jobs:
           docker run --rm \
             --user root -w /tmp \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
-            -v "$(pwd)/tmp/RPM-GPG-KEY-xcp-ng-ce:/etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce \
+            -v "$(pwd)/tmp/RPM-GPG-KEY-xcp-ng-ce:/etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
             bash -c "

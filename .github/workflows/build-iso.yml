@@ -115,15 +115,18 @@ jobs:
           cp /tmp/RPM-GPG-KEY-xcp-ng-ce create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
           curl -sL https://xcp-ng.org/RPM-GPG-KEY-xcpng -o create-install-image/templates/installimg/base/etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng
 
-      - name: Patch create-installimg.sh for multiple keys
+      - name: Patch toolchain with git
         run: |
-          # Use a broader regex to catch the line regardless of quoting style
-          sed -i 's/rpm --root=.* --erase gpg-pubkey/rpm --root="$ROOTFS" --erase --allmatches gpg-pubkey/' \
-            create-install-image/scripts/create-installimg.sh
+          # Apply the patch to the cloned toolchain directory
+          git apply create-install-image/patches/multi-key-support.patch
 
-          # Verify the patch worked (grep will return 0 if found)
-          grep "allmatches" create-install-image/scripts/create-installimg.sh
-
+          # Verify the change is present
+          if grep -q "allmatches" scripts/create-installimg.sh; then
+            echo "Toolchain patched successfully"
+          else
+            echo "Patch verification failed"
+            exit 1
+          fi
           
       - name: Build install.img
         run: |

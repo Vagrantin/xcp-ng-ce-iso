@@ -121,7 +121,9 @@ jobs:
           RUN yum install -y -q \
                 genisoimage syslinux grub-tools createrepo_c libfaketime && \
               yum install -y -q --enablerepo=epel gnupg1 && \
-              rpm --import https://raw.githubusercontent.com/xcp-ng/xcp-ng-release/master/src/common/etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng
+              curl -sL https://raw.githubusercontent.com/xcp-ng/xcp-ng-release/master/src/common/etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng \
+              -o /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng && \
+              rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng
           EOF
           docker build -f Dockerfile.build -t xcp-ng-build-local .
       
@@ -158,6 +160,8 @@ jobs:
             xcp-ng-build-ready \
             bash -c "
               set -e
+              echo '── Check gpg key ───────────────────────────────'
+              grep -n 'gpg\|GPG\|import\|pubkey' /create-install-image/scripts/create-installimg.sh | head -40
               echo '── Building install.img ───────────────────────────────'
               /create-install-image/scripts/create-installimg.sh \
                 --output /output/install-${XCPNG_VER}.img \

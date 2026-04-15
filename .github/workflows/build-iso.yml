@@ -157,13 +157,15 @@ jobs:
           VOLID="XCP-ng CE ${XCPNG_VER}"
 
           docker run --rm \
-            --user root \
+            --user "$(id -u):$(id -g)" \
+            -v /home/builder \
             -e GPG_KEY_ID="${GPG_KEY_ID}" \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd)/community-repo:/community-repo:ro" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
             bash -c "
+              whoami
               ls /output/install-${XCPNG_VER}.img
               file /output/install-${XCPNG_VER}.img
               /create-install-image/scripts/create-iso.sh \

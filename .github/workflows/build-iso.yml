@@ -158,7 +158,7 @@ jobs:
 
           docker run --rm \
             --user "$(id -u):$(id -g)" \
-            -v /home/builder \
+            -w /home/builder \
             -e GPG_KEY_ID="${GPG_KEY_ID}" \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "$(pwd)/community-repo:/community-repo:ro" \

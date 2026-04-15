@@ -157,7 +157,7 @@ jobs:
           VOLID="XCP-ng CE ${XCPNG_VER}"
 
           docker run --rm \
-            --user "$(id -u):$(id -g)" \
+            --user builder
             -w /home/builder \
             -e GPG_KEY_ID="${GPG_KEY_ID}" \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \

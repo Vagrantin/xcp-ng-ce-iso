@@ -1,3 +1,4 @@
 *.rpm
 *rpm/
 *.swp
+debug/

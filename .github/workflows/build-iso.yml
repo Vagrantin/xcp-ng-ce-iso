@@ -108,7 +108,7 @@ jobs:
           cp create-install-image/configs/base/* create-install-image/configs/${XCPNG_VER}/
           cp -f configs/repo/CUSTOMREPO.tmpl create-install-image/configs/${XCPNG_VER}/CUSTOMREPO.tmpl
           
-          echo "xo-lite-community" >> create-install-image/configs/${XCPNG_VER}/packages.lst
+          echo "community-xo-lite.rpm" >> create-install-image/configs/${XCPNG_VER}/packages.lst
           
           echo "▶ Custom repo template deployed for XCP-ng ${XCPNG_VER}"
 

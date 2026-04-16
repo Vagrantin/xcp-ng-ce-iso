@@ -139,6 +139,7 @@ jobs:
             --user root -w /tmp \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
             -v "/tmp/RPM-GPG-KEY-xcp-ng-ce:/etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce" \
+            -v "$(pwd)/community-repo:/community-repo:ro" \
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
             bash -ce "
@@ -147,6 +148,7 @@ jobs:
 
               /create-install-image/scripts/create-installimg.sh \
                 --output /output/install-${XCPNG_VER}.img \
+                --define-repo community!file:///community-repo \
                 --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base \
                 --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates \
                 --verbose \

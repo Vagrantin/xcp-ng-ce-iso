@@ -42,24 +42,31 @@ jobs:
           echo "▶ Toolchain cloned (master branch)"
           ls create-install-image/scripts/
 
-      # ── 4. Fetch the signed community xo-lite RPM ─────────────────────────
+      # ── 4. Fetch the signed community xo-lite-ce RPM ──────────────────────
       - name: Fetch community xo-lite RPM
         run: |
           RPM_URL=$(curl -sf \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository_owner }}/xolite-ce/releases/latest" \
             | jq -r '.assets[] | select(.name | endswith(".rpm")) | .browser_download_url')
-          test -n "${RPM_URL}" || exit 1
-          wget -q -O community-xo-lite.rpm "${RPM_URL}"
+          
+          test -n "${RPM_URL}" || { echo "Failed to find RPM asset"; exit 1; }
+          
+          # Extract the actual filename dynamically (e.g. xo-lite-ce-0.8.0-1.noarch.rpm)
+          PACKAGE_NAME=$(basename "${RPM_URL}")
+          echo "RPM_FILENAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "▶ Detected filename: ${PACKAGE_NAME}"
+
+          wget -q -O "${PACKAGE_NAME}" "${RPM_URL}"
 
       # ── 5. Build local community RPM repo ─────────────────────────────────
       - name: Create and Sign community RPM repo
         run: |
           sudo apt-get install -y createrepo-c -qq
           mkdir -p community-repo/x86_64
-          cp community-xo-lite.rpm community-repo/x86_64
+          cp "${{ env.RPM_FILENAME }}" community-repo/x86_64/
           createrepo_c community-repo/x86_64
-          #Sign the metadata of the community repo
+          # Sign the metadata of the community repo
           gpg --detach-sign --armor community-repo/x86_64/repodata/repomd.xml
 
       # ── 6. Pull the official build environment ────────────────────────────
@@ -104,12 +111,14 @@ jobs:
           # Ensure the destination directory exists for the specific version
           mkdir -p create-install-image/configs/${XCPNG_VER}
           
-          # Copy your customized template into the toolchain's version-specific config dir
+          # Copy customized template into the toolchain's version-specific config dir
           cp create-install-image/configs/base/* create-install-image/configs/${XCPNG_VER}/
           cp -f configs/repo/CUSTOMREPO.tmpl create-install-image/configs/${XCPNG_VER}/CUSTOMREPO.tmpl
-          PKG_NAME=$(rpm -qp community-xo-lite.rpm --qf '%{NAME}')
+          
+          # Use the dynamic filename to discover the internal package name (e.g. xo-lite-ce)
+          PKG_NAME=$(rpm -qp "${{ env.RPM_FILENAME }}" --qf '%{NAME}')
           echo "Discovered internal package name: ${PKG_NAME}"
-          echo ${PKG_NAME} >> create-install-image/configs/${XCPNG_VER}/packages.lst
+          echo "${PKG_NAME}" >> create-install-image/configs/${XCPNG_VER}/packages.lst
           
           echo "▶ Custom repo template deployed for XCP-ng ${XCPNG_VER}"
 
@@ -121,11 +130,9 @@ jobs:
 
       - name: Patch toolchain with git
         run: |
-          # Apply the patch to the cloned toolchain directory
           cd create-install-image
           git apply ../patches/multi-key-support.patch
 
-          # Verify the change is present
           if grep -q "allmatches" scripts/create-installimg.sh; then
             echo "Toolchain patched successfully"
           else
@@ -146,7 +153,7 @@ jobs:
             bash -ce "
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng 
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce 
-              echo '--- What do we have in this repo ?---'
+              echo '--- Local Repo Contents ---'
               ls -lR /community-repo
 
               /create-install-image/scripts/create-installimg.sh \
@@ -175,10 +182,6 @@ jobs:
             -v "$(pwd):/output" \
             xcp-ng-build-ready \
             bash -c "
-              whoami
-              pwd
-              ls /output/install-${XCPNG_VER}.img
-              file /output/install-${XCPNG_VER}.img
               /create-install-image/scripts/create-iso.sh \
                 -V \"${VOLID}\" \
                 --output /output/${OUTPUT} \
@@ -200,9 +203,15 @@ jobs:
           sudo apt-get install -y xorriso -qq
           mkdir -p /tmp/iso-check
           xorriso -osirrox on -indev "${OUTPUT}" -extract /Packages /tmp/iso-check/
-          echo "moving to the check"
-          ls -lR /tmp/iso-check
-          find /tmp/iso-check -name "*xo-lite.rpm" | grep -q "community" || exit 1
+          echo "▶ Contents of ISO Packages directory:"
+          ls -l /tmp/iso-check
+          
+          # Verify based on the new 'xo-lite-ce' naming pattern
+          find /tmp/iso-check -name "xo-lite-ce*.rpm" | grep -q "xo-lite-ce" || {
+            echo "Verification failed: New xo-lite-ce RPM not found in ISO"
+            exit 1
+          }
+          echo "Verification successful"
 
       # ── 10. Publish Release ───────────────────────────────────────────────
       - name: Publish GitHub Release
@@ -215,10 +224,9 @@ jobs:
             Unofficial community build of XCP-ng ${{ github.event.inputs.xcpng_version }}.
 
             ### Verification
+            Import the community GPG key before verifying internal packages:
             ```bash
-            # FIXED: Corrected GPG import URL
             rpm --import [https://github.com/$](https://github.com/$){{ github.repository_owner }}/xcp-ng-ce-iso/raw/main/RPM-GPG-KEY-xcp-ng-ce
-            rpm --checksig xo-lite-community-*.noarch.rpm
             ```
           files: ${{ env.OUTPUT }}
         env:

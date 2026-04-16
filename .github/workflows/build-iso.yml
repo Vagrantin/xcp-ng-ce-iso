@@ -107,8 +107,9 @@ jobs:
           # Copy your customized template into the toolchain's version-specific config dir
           cp create-install-image/configs/base/* create-install-image/configs/${XCPNG_VER}/
           cp -f configs/repo/CUSTOMREPO.tmpl create-install-image/configs/${XCPNG_VER}/CUSTOMREPO.tmpl
-          
-          echo "community-xo-lite.rpm" >> create-install-image/configs/${XCPNG_VER}/packages.lst
+          PKG_NAME=$(rpm -qp community-xo-lite.rpm --qf '%{NAME}')
+          echo "Discovered internal package name: ${PKG_NAME}"
+          echo ${PKG_NAME} >> create-install-image/configs/${XCPNG_VER}/packages.lst
           
           echo "▶ Custom repo template deployed for XCP-ng ${XCPNG_VER}"
 

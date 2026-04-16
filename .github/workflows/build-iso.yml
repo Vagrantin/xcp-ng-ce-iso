@@ -9,7 +9,7 @@ on:
         required: true
       release_tag:
         description: 'Release tag (e.g. xcp-ng-ce-20260411)'
-        default: 'xcp-ng-ce-20260411-alpha'
+        default: 'xcp-ng-ce-20260416-alpha'
         required: true
 
 jobs:
@@ -201,6 +201,7 @@ jobs:
           mkdir -p /tmp/iso-check
           xorriso -osirrox on -indev "${OUTPUT}" -extract /Packages /tmp/iso-check/
           echo "moving to the check"
+          ls -lR /tmp/iso-check
           find /tmp/iso-check -name "*xo-lite.rpm" | grep -q "community" || exit 1
 
       # ── 10. Publish Release ───────────────────────────────────────────────

@@ -192,6 +192,7 @@ jobs:
 
       - name: Verify community RPM in ISO
         run: |
+          sudo apt-get install -y xorriso -qq
           mkdir -p /tmp/iso-check
           xorriso -osirrox on -indev "${OUTPUT}" -extract /Packages /tmp/iso-check/
           find /tmp/iso-check -name "xo-lite*.rpm" | grep -q "community" || exit 1

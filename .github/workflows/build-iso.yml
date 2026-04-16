@@ -56,11 +56,11 @@ jobs:
       - name: Create and Sign community RPM repo
         run: |
           sudo apt-get install -y createrepo-c -qq
-          mkdir -p community-repo
-          cp community-xo-lite.rpm community-repo/
-          createrepo_c community-repo/
+          mkdir -p community-repo/x86_64
+          cp community-xo-lite.rpm community-repo/x86_64
+          createrepo_c community-repo/x86_64
           #Sign the metadata of the community repo
-          gpg --detach-sign --armor community-repo/repodata/repomd.xml
+          gpg --detach-sign --armor community-repo/x86_64/repodata/repomd.xml
 
       # ── 6. Pull the official build environment ────────────────────────────
       - name: Pull xcp-ng-build-env

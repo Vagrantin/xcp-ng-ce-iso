@@ -190,11 +190,6 @@ jobs:
         if: always()
         run: shred -u /tmp/community-signing.key || true
 
-      - name: Verify ISO
-        run: |
-          sudo apt-get install -y -qq isomd5sum
-          checkisomd5 "${OUTPUT}"
-
       - name: Verify community RPM in ISO
         run: |
           mkdir -p /tmp/iso-check

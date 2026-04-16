@@ -145,7 +145,7 @@ jobs:
             bash -ce "
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng 
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce 
-              echo "--- What do we have in this repo ?---"
+              echo '--- What do we have in this repo ?---'
               ls -lR /community-repo
 
               /create-install-image/scripts/create-installimg.sh \

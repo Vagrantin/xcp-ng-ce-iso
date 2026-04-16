@@ -158,6 +158,8 @@ jobs:
           OUTPUT="xcp-ng-ce-${XCPNG_VER}.iso"
           VOLID="XCP-ng CE ${XCPNG_VER}"
 
+          sudo chown -R 1000:1000
+
           docker run --rm \
             --user builder \
             -w /home/builder \

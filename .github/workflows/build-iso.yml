@@ -108,6 +108,8 @@ jobs:
           cp create-install-image/configs/base/* create-install-image/configs/${XCPNG_VER}/
           cp -f configs/repo/CUSTOMREPO.tmpl create-install-image/configs/${XCPNG_VER}/CUSTOMREPO.tmpl
           
+          echo "xo-lite-community" >> create-install-image/configs/${XCPNG_VER}/packages.lst
+          
           echo "▶ Custom repo template deployed for XCP-ng ${XCPNG_VER}"
 
       - name: Inject Community GPG key into toolchain templates
@@ -196,7 +198,7 @@ jobs:
           mkdir -p /tmp/iso-check
           xorriso -osirrox on -indev "${OUTPUT}" -extract /Packages /tmp/iso-check/
           echo "moving to the check"
-          find /tmp/iso-check -name "xo-lite*.rpm" | grep -q "community" || exit 1
+          find /tmp/iso-check -name "*xo-lite*.rpm" | grep -q "community" || exit 1
 
       # ── 10. Publish Release ───────────────────────────────────────────────
       - name: Publish GitHub Release

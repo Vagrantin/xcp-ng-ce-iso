@@ -161,6 +161,7 @@ jobs:
                 --define-repo community!file:///community-repo \
                 --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base \
                 --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates \
+                --verbose \
                 ${XCPNG_VER}
             echo 'install.img built'
             "
@@ -189,6 +190,7 @@ jobs:
                 --define-repo community!file:///community-repo \
                 --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base \
                 --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates \
+                --verbose \
                 ${XCPNG_VER} /output/install-${XCPNG_VER}.img
             "
           echo "OUTPUT=${OUTPUT}" >> $GITHUB_ENV

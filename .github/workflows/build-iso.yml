@@ -118,7 +118,7 @@ jobs:
           # Use the dynamic filename to discover the internal package name (e.g. xo-lite-ce)
           PKG_NAME=$(rpm -qp "${{ env.RPM_FILENAME }}" --qf '%{NAME}')
           echo "Discovered internal package name: ${PKG_NAME}"
-          echo "${PKG_NAME}" >> create-install-image/configs/${XCPNG_VER}/packages.lst
+          sed -i 's/^xo-lite$/${PKG_NAME}/' create-install-image/configs/${XCPNG_VER}/packages.lst
           
           echo "▶ Custom repo template deployed for XCP-ng ${XCPNG_VER}"
 

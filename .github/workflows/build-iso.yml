@@ -54,7 +54,23 @@ jobs:
           
           # Extract the actual filename dynamically (e.g. xo-lite-ce-0.8.0-1.noarch.rpm)
           PACKAGE_NAME=$(basename "${RPM_URL}")
-          echo "RPM_FILENAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "XOLITE-CE_FILENAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "▶ Detected filename: ${PACKAGE_NAME}"
+
+          wget -q -O "${PACKAGE_NAME}" "${RPM_URL}"
+
+      # ── 4b. Fetch the signed community xoa-proxy RPM ──────────────────────
+      - name: Fetch xoa-proxy RPM
+        run: |
+          RPM_URL=$(curl -sf \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/Vagrantin/xoa-proxy/releases/latest" \
+            | jq -r '.assets[] | select(.name | endswith(".rpm")) | .browser_download_url')
+
+          test -n "${RPM_URL}" || { echo "Failed to find xoa-proxy RPM asset"; exit 1; }
+
+          PACKAGE_NAME=$(basename "${RPM_URL}")
+          echo "XOA_PROXY_FILENAME=${PACKAGE_NAME}" >> $GITHUB_ENV
           echo "▶ Detected filename: ${PACKAGE_NAME}"
 
           wget -q -O "${PACKAGE_NAME}" "${RPM_URL}"
@@ -64,7 +80,8 @@ jobs:
         run: |
           sudo apt-get install -y createrepo-c -qq
           mkdir -p community-repo/x86_64
-          cp "${{ env.RPM_FILENAME }}" community-repo/x86_64/
+          cp "${{ env.XOLITE-CE_FILENAME }}" community-repo/x86_64/
+          cp "${{ env.XOA_PROXY_FILENAME }}" community-repo/x86_64/
           createrepo_c community-repo/x86_64
           # Sign the metadata of the community repo
           gpg --detach-sign --armor community-repo/x86_64/repodata/repomd.xml
@@ -116,7 +133,7 @@ jobs:
           cp -f configs/repo/CUSTOMREPO.tmpl create-install-image/configs/${XCPNG_VER}/CUSTOMREPO.tmpl
           
           # Use the dynamic filename to discover the internal package name (e.g. xo-lite-ce)
-          PKG_NAME=$(rpm -qp "${{ env.RPM_FILENAME }}" --qf '%{NAME}')
+          PKG_NAME=$(rpm -qp "${{ env.XOLITE-CE_FILENAME }}" --qf '%{NAME}')
           echo "Discovered internal package name: ${PKG_NAME}"
           sed -i 's/^xo-lite$/${PKG_NAME}/' create-install-image/configs/${XCPNG_VER}/packages.lst
           

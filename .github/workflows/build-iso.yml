@@ -9,7 +9,7 @@ on:
         required: true
       release_tag:
         description: 'Release tag (e.g. xcp-ng-ce-20260411)'
-        default: 'xcp-ng-ce-20260508-alpha2'
+        default: 'xcp-ng-ce-20260509-alpha2'
         required: true
 
 jobs:

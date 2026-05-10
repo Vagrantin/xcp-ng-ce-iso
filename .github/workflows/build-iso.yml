@@ -9,7 +9,7 @@ on:
         required: true
       release_tag:
         description: 'Release tag (e.g. xcp-ng-ce-20260411)'
-        default: 'xcp-ng-ce-20260509-alpha2'
+        default: 'xcp-ng-ce-20260510-alpha2'
         required: true
 
 jobs:
@@ -26,14 +26,32 @@ jobs:
 
       # ── 1. Import GPG key on the runner ───────────────────────────────────
       - name: Import GPG signing key
-        run: |
-          echo "${GPG_PRIVATE_KEY}" | gpg --batch --import
-          GPG_KEY_ID=$(gpg --list-secret-keys --with-colons \
-            | awk -F: '/^sec/{print $5}' | head -1)
-          echo "GPG_KEY_ID=${GPG_KEY_ID}" >> $GITHUB_ENV
-          echo "▶ GPG key imported: ${GPG_KEY_ID}"
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          # Import passphrase-protected key
+          echo "${GPG_PRIVATE_KEY}" | gpg --batch --pinentry-mode loopback \
+            --passphrase "${GPG_PASSPHRASE}" --import
+
+          # Configure gpg-agent for non-TTY passphrase delivery
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent
+          gpgconf --launch gpg-agent
+          sleep 1
+
+          # Pre-cache passphrase in agent for all subsequent signing
+          echo "${GPG_PASSPHRASE}" | gpg --batch --pinentry-mode loopback \
+            --passphrase-fd 0 --quiet --no-tty \
+            -u "XCP-ng Community Edition" \
+            --sign --output /dev/null /dev/null
+
+          GPG_KEY_ID=$(gpg --list-secret-keys --with-colons 2>/dev/null \
+            | awk -F: '/^sec/{print $5}' | head -1)
+          echo "GPG_KEY_ID=${GPG_KEY_ID}" >> $GITHUB_ENV
+          echo "GPG_PASSPHRASE=${GPG_PASSPHRASE}" >> $GITHUB_ENV
+          echo "▶ GPG key imported: ${GPG_KEY_ID}" 
 
       # ── 2. Clone the official ISO build toolchain ─────────────────────────
       - name: Clone create-install-image
@@ -83,8 +101,10 @@ jobs:
           cp "${{ env.XOLITE-CE_FILENAME }}" community-repo/x86_64/
           cp "${{ env.XOA_PROXY_FILENAME }}" community-repo/x86_64/
           createrepo_c community-repo/x86_64
-          # Sign the metadata of the community repo
-          gpg --detach-sign --armor community-repo/x86_64/repodata/repomd.xml
+          # Sign the metadata of the community repo (agent has cached passphrase)
+          gpg --batch --pinentry-mode loopback \
+            --detach-sign --armor \
+            community-repo/x86_64/repodata/repomd.xml
 
       # ── 6. Pull the official build environment ────────────────────────────
       - name: Pull xcp-ng-build-env
@@ -94,8 +114,11 @@ jobs:
       # ── 7. Export GPG private key for container ───────────────────────────
       - name: Export GPG key for container
         run: |
-          gpg --armor --export-secret-keys "${GPG_KEY_ID}" > /tmp/community-signing.key
+          # Export private key — passphrase is preserved in the exported file
+          gpg --batch --armor --pinentry-mode loopback \
+            --export-secret-keys "${GPG_KEY_ID}" > /tmp/community-signing.key
           gpg --armor --export "${GPG_KEY_ID}" > /tmp/RPM-GPG-KEY-xcp-ng-ce
+          chmod 600 /tmp/community-signing.key
 
       # ── 8. Build ISO inside the container ─────────────────────────────────
       - name: Build toolchain image with dependencies
@@ -113,11 +136,14 @@ jobs:
       
       - name: Bake GPG key into image
         run: |
+          # gpg1 (classic GnuPG) requires passphrase via --passphrase flag
           CONTAINER_ID=$(docker run -d \
             --user root \
+            -e "GPG_PASSPHRASE=${GPG_PASSPHRASE}" \
             -v "/tmp/community-signing.key:/community-signing.key:ro" \
             xcp-ng-build-local \
-            bash -c "gpg1 --batch --import /community-signing.key")
+            bash -c 'gpg1 --batch --passphrase "${GPG_PASSPHRASE}" \
+              --import /community-signing.key')
           docker wait "${CONTAINER_ID}"
           docker commit "${CONTAINER_ID}" xcp-ng-build-ready
           docker rm "${CONTAINER_ID}"

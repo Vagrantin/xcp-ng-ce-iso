@@ -9,7 +9,7 @@ on:
         required: true
       release_tag:
         description: 'Release tag (e.g. xcp-ng-ce-20260411)'
-        default: 'xcp-ng-ce-20260510-alpha2'
+        default: 'xcp-ng-ce-20260510-alpha3'
         required: true
 
 jobs:
@@ -114,8 +114,9 @@ jobs:
       # ── 7. Export GPG private key for container ───────────────────────────
       - name: Export GPG key for container
         run: |
-          # Export private key — passphrase is preserved in the exported file
+          # Export private key — passphrase required to decrypt key material for export
           gpg --batch --armor --pinentry-mode loopback \
+            --passphrase "${GPG_PASSPHRASE}" \
             --export-secret-keys "${GPG_KEY_ID}" > /tmp/community-signing.key
           gpg --armor --export "${GPG_KEY_ID}" > /tmp/RPM-GPG-KEY-xcp-ng-ce
           chmod 600 /tmp/community-signing.key

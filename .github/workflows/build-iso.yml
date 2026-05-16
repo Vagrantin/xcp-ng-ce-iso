@@ -116,7 +116,7 @@ jobs:
       # ── 6. Pull the official build environment ────────────────────────────
       - name: Pull xcp-ng-build-env
         run: |
-          docker pull ghcr.io/xcp-ng/xcp-ng-build-env:${{ github.event.inputs.xcpng_version }}
+          docker pull ghcr.io/xcp-ng/xcp-ng-build-env:${XCPNG_VER}
 
       # ── 7. Export GPG private key for container ───────────────────────────
       - name: Export GPG key for container

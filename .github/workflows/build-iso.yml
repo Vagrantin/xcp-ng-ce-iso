@@ -262,21 +262,49 @@ jobs:
           }
           echo "Verification successful"
 
-      # ── 10. Publish Release ───────────────────────────────────────────────
+      # ── 10. Checksum and sign ─────────────────────────────────────────────
+      - name: Generate and sign SHA256SUMS
+        run: |
+          CHECKSUM_FILE="${OUTPUT}.sha256"
+          sha256sum "${OUTPUT}" > "${CHECKSUM_FILE}"
+          echo "CHECKSUM_FILE=${CHECKSUM_FILE}" >> $GITHUB_ENV
+          echo "▶ Checksum:"
+          cat "${CHECKSUM_FILE}"
+
+          gpg --batch --pinentry-mode loopback \
+            --detach-sign --armor \
+            "${CHECKSUM_FILE}"
+          # produces ${OUTPUT}.sha256.asc
+
+          echo "▶ Verifying signature before publish:"
+          gpg --verify "${CHECKSUM_FILE}.asc" "${CHECKSUM_FILE}"
+
+      # ── 11. Publish Release ───────────────────────────────────────────────
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: 'XCP-ng Community Edition ${{ env.RELEASE_TAG }}'
           body: |
             ## XCP-ng Community Edition ISO
+
             Unofficial community build of XCP-ng ${{ env.XCPNG_VER }}.
 
-            ### Verification
-            Import the community GPG key before verifying internal packages:
-            ```bash
-            rpm --import [https://github.com/$](https://github.com/$){{ github.repository_owner }}/xcp-ng-ce-iso/raw/main/RPM-GPG-KEY-xcp-ng-ce
-            ```
-          files: ${{ env.OUTPUT }}
+            ### Verify before installing
+```bash
+            # Import the community GPG key (once)
+            gpg --keyserver keys.openpgp.org \
+              --recv-keys 2F591DB9D2C128C4C3D963F46DA00DCA5BBA215A
+
+            # Verify the checksum file signature
+            gpg --verify xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256.asc \
+                         xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256
+
+            # Verify the ISO integrity
+            sha256sum -c xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256
+```
+          files: |
+            ${{ env.OUTPUT }}
+            ${{ env.CHECKSUM_FILE }}
+            ${{ env.CHECKSUM_FILE }}.asc
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

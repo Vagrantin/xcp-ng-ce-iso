@@ -1,16 +1,14 @@
 name: Build XCP-ng Community Edition ISO
 
 on:
+  push:
+    tags:
+      - 'v*-ce[0-9]*'
   workflow_dispatch:
     inputs:
-      xcpng_version:
-        description: 'XCP-ng version (e.g. 8.3)'
-        default: '8.3'
-        required: true
       release_tag:
-        description: 'Release tag (e.g. xcp-ng-ce-20260411)'
-        default: 'xcp-ng-ce-20260510-alpha3'
-        required: true
+        description: 'Emergency release'
+        required: false 
 
 jobs:
   build-iso:
@@ -23,6 +21,15 @@ jobs:
       # ── 0. Checkout xcp-ng-ce-iso ─────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Derive versions from tag or input
+        run: |
+          TAG="${{ github.ref_name || github.event.inputs.release_tag }}"
+          # v8.3-ce4  →  XCPNG_VER=8.3  CE_BUILD=4
+          XCPNG_VER=$(echo "${TAG}" | sed 's/^v//;s/-ce.*//')
+          echo "XCPNG_VER=${XCPNG_VER}" >> $GITHUB_ENV
+          echo "RELEASE_TAG=${TAG}"      >> $GITHUB_ENV
+          echo " XCP-ng version: ${XCPNG_VER} release: ${TAG}"
 
       # ── 1. Import GPG key on the runner ───────────────────────────────────
       - name: Import GPG signing key
@@ -124,7 +131,6 @@ jobs:
       # ── 8. Build ISO inside the container ─────────────────────────────────
       - name: Build toolchain image with dependencies
         run: |
-          XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
           cat > Dockerfile.build <<EOF
           FROM ghcr.io/xcp-ng/xcp-ng-build-env:${XCPNG_VER}
           RUN yum install -y -q \
@@ -151,7 +157,6 @@ jobs:
 
       - name: Prepare create-install-image for custom repo
         run: |
-          XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
           # Ensure the destination directory exists for the specific version
           mkdir -p create-install-image/configs/${XCPNG_VER}
           
@@ -186,7 +191,6 @@ jobs:
           
       - name: Build install.img
         run: |
-          XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
           docker run --rm \
             --user root -w /tmp \
             -v "$(pwd)/create-install-image:/create-install-image:ro" \
@@ -212,7 +216,6 @@ jobs:
 
       - name: Build ISO
         run: |
-          XCPNG_VER="${{ github.event.inputs.xcpng_version }}"
           OUTPUT="xcp-ng-ce-${XCPNG_VER}.iso"
           VOLID="XCP-ng CE ${XCPNG_VER}"
 
@@ -263,11 +266,11 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.release_tag }}
-          name: 'XCP-ng Community Edition ${{ github.event.inputs.release_tag }}'
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: 'XCP-ng Community Edition ${{ env.RELEASE_TAG }}'
           body: |
             ## XCP-ng Community Edition ISO
-            Unofficial community build of XCP-ng ${{ github.event.inputs.xcpng_version }}.
+            Unofficial community build of XCP-ng ${{ env.XCPNG_VER }}.
 
             ### Verification
             Import the community GPG key before verifying internal packages:

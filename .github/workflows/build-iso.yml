@@ -241,6 +241,9 @@ jobs:
                 ${XCPNG_VER} /output/install-${XCPNG_VER}.img
             "
           echo "OUTPUT=${OUTPUT}" >> $GITHUB_ENV
+          
+      - name: Restore working directory ownership
+        run: sudo chown -R $(id -u):$(id -g) .
 
       # ── 9. Verification & Cleanup ─────────────────────────────────────────
       - name: Remove GPG private key

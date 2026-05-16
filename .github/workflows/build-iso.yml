@@ -290,7 +290,7 @@ jobs:
             Unofficial community build of XCP-ng ${{ env.XCPNG_VER }}.
 
             ### Verify before installing
-```bash
+            ```bash
             # Import the community GPG key (once)
             gpg --keyserver keys.openpgp.org \
               --recv-keys 2F591DB9D2C128C4C3D963F46DA00DCA5BBA215A
@@ -301,7 +301,7 @@ jobs:
 
             # Verify the ISO integrity
             sha256sum -c xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256
-```
+            ```
           files: |
             ${{ env.OUTPUT }}
             ${{ env.CHECKSUM_FILE }}

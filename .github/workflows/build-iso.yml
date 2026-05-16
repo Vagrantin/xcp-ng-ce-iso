@@ -289,22 +289,74 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           body: |
             ## XCP-ng Community Edition ISO
-
             Unofficial community build of XCP-ng ${{ env.XCPNG_VER }}.
 
-            ### Verify before installing
-            ```bash
-            # Import the community GPG key (once)
-            gpg --keyserver keys.openpgp.org \
-              --recv-keys 2F591DB9D2C128C4C3D963F46DA00DCA5BBA215A
+            ### Release files
 
-            # Verify the checksum file signature
+            | File | Purpose |
+            |---|---|
+            | `xcp-ng-ce-${{ env.XCPNG_VER }}.iso` | Bootable installer ISO |
+            | `xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256` | SHA256 checksum of the ISO |
+            | `xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256.asc` | GPG signature over the checksum file |
+
+            ### Verify before installing
+
+            Verification works in two steps: first you confirm the checksum file
+            was signed by this project, then you confirm the ISO matches that checksum.
+            Both steps are required.
+
+            **1. Download all three files into the same directory**
+
+            All files must be in the same directory — `sha256sum -c` looks for
+            the ISO by name in the current directory.
+
+            ```bash
+            cd ~/Downloads
+            # download the three files listed above from this release page
+            ```
+
+            **2. Import the community GPG key (one-time)**
+
+            ```bash
+            gpg --keyserver keys.openpgp.org \
+                --recv-keys 2F591DB9D2C128C4C3D963F46DA00DCA5BBA215A
+            ```
+
+            **3. Verify the checksum file is authentic**
+
+            This confirms the checksum file was produced by this project and has
+            not been tampered with.
+
+            ```bash
             gpg --verify xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256.asc \
                          xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256
+            ```
 
-            # Verify the ISO integrity
+            Expected output:
+            ```
+            gpg: Good signature from "XCP-ng Community Edition <xcp-ng-ce.lid530@passmail.com>"
+            ```
+
+            If you see `BAD signature` — stop. The checksum file has been tampered with.
+
+            **4. Verify the ISO matches the signed checksum**
+
+            This confirms the ISO file is intact and matches what was released.
+
+            ```bash
             sha256sum -c xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256
             ```
+
+            Expected output:
+            ```
+            xcp-ng-ce-${{ env.XCPNG_VER }}.iso: OK
+            ```
+
+            If you see `FAILED` — the ISO is corrupted. Delete it and re-download.
+
+            ---
+            > XCP-ng Community Edition is an independent community project.
+            > Not affiliated with or supported by Vates SAS or the XCP-ng project.
           files: |
             ${{ env.OUTPUT }}
             ${{ env.CHECKSUM_FILE }}

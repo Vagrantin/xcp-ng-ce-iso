@@ -1,4 +1,5 @@
-name: Build XCP-ng Community Edition ISO
+name: Build XCP-ng Home-laber Edition ISO
+run-name: "Build XCP-ng Home-laber Edition ISO (Tag: ${{ github.ref_name }})"
 
 on:
   push:
@@ -25,11 +26,13 @@ jobs:
       - name: Derive versions from tag or input
         run: |
           TAG="${{ github.ref_name || github.event.inputs.release_tag }}"
-          # v8.3-ce4  →  XCPNG_VER=8.3  CE_BUILD=4
+          # v8.3-ce3  →  XCPNG_VER=8.3  CE_COUNTER=ce3
           XCPNG_VER=$(echo "${TAG}" | sed 's/^v//;s/-ce.*//')
+          CE_COUNTER=$(echo "${TAG}" | sed 's/.*-//')
           echo "XCPNG_VER=${XCPNG_VER}" >> $GITHUB_ENV
+          echo "CE_COUNTER=${CE_COUNTER}" >> $GITHUB_ENV
           echo "RELEASE_TAG=${TAG}"      >> $GITHUB_ENV
-          echo " XCP-ng version: ${XCPNG_VER} release: ${TAG}"
+          echo "▶ XCP-ng version: ${XCPNG_VER}, CE counter: ${CE_COUNTER}, full tag: ${TAG}"
 
       # ── 1. Import GPG key on the runner ───────────────────────────────────
       - name: Import GPG signing key
@@ -216,8 +219,8 @@ jobs:
 
       - name: Build ISO
         run: |
-          OUTPUT="xcp-ng-ce-${XCPNG_VER}.iso"
-          VOLID="XCP-ng CE ${XCPNG_VER}"
+          OUTPUT="xcp-ng-${XCPNG_VER}-${CE_COUNTER}.iso"
+          VOLID="XCP-ng CE ${XCPNG_VER} (${CE_COUNTER})"
 
           sudo chown -R 1000:1000 .
 
@@ -289,15 +292,15 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           body: |
             ## XCP-ng Community Edition ISO
-            Unofficial community build of XCP-ng ${{ env.XCPNG_VER }}.
+            Unofficial community build of XCP-ng ${{ env.XCPNG_VER }} (${{ env.CE_COUNTER }}).
 
             ### Release files
 
             | File | Purpose |
             |---|---|
-            | `xcp-ng-ce-${{ env.XCPNG_VER }}.iso` | Bootable installer ISO |
-            | `xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256` | SHA256 checksum of the ISO |
-            | `xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256.asc` | GPG signature over the checksum file |
+            | `xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso` | Bootable installer ISO |
+            | `xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso.sha256` | SHA256 checksum of the ISO |
+            | `xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso.sha256.asc` | GPG signature over the checksum file |
 
             ### Verify before installing
 
@@ -328,8 +331,8 @@ jobs:
             not been tampered with.
 
             ```bash
-            gpg --verify xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256.asc \
-                         xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256
+            gpg --verify xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso.sha256.asc \
+                         xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso.sha256
             ```
 
             Expected output:
@@ -344,12 +347,12 @@ jobs:
             This confirms the ISO file is intact and matches what was released.
 
             ```bash
-            sha256sum -c xcp-ng-ce-${{ env.XCPNG_VER }}.iso.sha256
+            sha256sum -c xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso.sha256
             ```
 
             Expected output:
             ```
-            xcp-ng-ce-${{ env.XCPNG_VER }}.iso: OK
+            xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso: OK
             ```
 
             If you see `FAILED` — the ISO is corrupted. Delete it and re-download.

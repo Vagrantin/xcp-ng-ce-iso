@@ -1,15 +1,22 @@
 name: Build XCP-ng Home-laber Edition ISO
 run-name: "Build XCP-ng Home-laber Edition ISO (Tag: ${{ github.ref_name }})"
 
+# Dispatch-only: the iso-agent pushes the release tag, then dispatches this
+# workflow on that tag ref with the exact component release tags to bake in.
+# (A plain tag push no longer triggers a build — `releases/latest` raced with
+# freshly published component releases and could bake a stale RPM.)
 on:
-  push:
-    tags:
-      - 'v*-ce[0-9]*'
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Emergency release'
-        required: false 
+        description: 'Emergency release (only needed when dispatching from a branch instead of a tag)'
+        required: false
+      xolite_tag:
+        description: 'Exact xolite-ce release tag to bake in (empty = latest)'
+        required: false
+      xoa_proxy_tag:
+        description: 'Exact xoa-proxy release tag to bake in (empty = latest)'
+        required: false
 
 jobs:
   build-iso:
@@ -25,7 +32,14 @@ jobs:
 
       - name: Derive versions from tag or input
         run: |
-          TAG="${{ github.ref_name || github.event.inputs.release_tag }}"
+          # Dispatched on a tag ref (orchestrator path): ref_name is the tag.
+          # Dispatched from a branch (emergency path): use the release_tag input.
+          TAG="${{ github.ref_name }}"
+          case "${TAG}" in
+            v*-ce*) ;;
+            *) TAG="${{ github.event.inputs.release_tag }}" ;;
+          esac
+          test -n "${TAG}" || { echo "Not running on a release tag and no release_tag input given"; exit 1; }
           # v8.3-ce3  →  XCPNG_VER=8.3  CE_COUNTER=ce3
           XCPNG_VER=$(echo "${TAG}" | sed 's/^v//;s/-ce.*//')
           CE_COUNTER=$(echo "${TAG}" | sed 's/.*-//')
@@ -73,13 +87,25 @@ jobs:
       # ── 4. Fetch the signed community xo-lite-ce RPM ──────────────────────
       - name: Fetch community xo-lite RPM
         run: |
+          # Pinned tag from the orchestrator = deterministic build. Fall back
+          # to releases/latest only for manual emergency runs without the input.
+          PINNED_TAG="${{ github.event.inputs.xolite_tag }}"
+          if [ -n "${PINNED_TAG}" ]; then
+            RELEASE_API="https://api.github.com/repos/${{ github.repository_owner }}/xolite-ce/releases/tags/${PINNED_TAG}"
+            echo "▶ Using pinned xolite-ce release: ${PINNED_TAG}"
+          else
+            RELEASE_API="https://api.github.com/repos/${{ github.repository_owner }}/xolite-ce/releases/latest"
+            echo "▶ No xolite_tag input — falling back to latest xolite-ce release"
+          fi
+
           RPM_URL=$(curl -sf \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository_owner }}/xolite-ce/releases/latest" \
+            "${RELEASE_API}" \
             | jq -r '.assets[] | select(.name | endswith(".rpm")) | .browser_download_url')
-          
-          test -n "${RPM_URL}" || { echo "Failed to find RPM asset"; exit 1; }
-          
+
+          test -n "${RPM_URL}" || { echo "Failed to find RPM asset for ${RELEASE_API}"; exit 1; }
+          echo "▶ Downloading: ${RPM_URL}"
+
           # Extract the actual filename dynamically (e.g. xo-lite-ce-0.8.0-1.noarch.rpm)
           PACKAGE_NAME=$(basename "${RPM_URL}")
           echo "XOLITE-CE_FILENAME=${PACKAGE_NAME}" >> $GITHUB_ENV
@@ -90,12 +116,22 @@ jobs:
       # ── 4b. Fetch the signed community xoa-proxy RPM ──────────────────────
       - name: Fetch xoa-proxy RPM
         run: |
+          PINNED_TAG="${{ github.event.inputs.xoa_proxy_tag }}"
+          if [ -n "${PINNED_TAG}" ]; then
+            RELEASE_API="https://api.github.com/repos/Vagrantin/xoa-proxy/releases/tags/${PINNED_TAG}"
+            echo "▶ Using pinned xoa-proxy release: ${PINNED_TAG}"
+          else
+            RELEASE_API="https://api.github.com/repos/Vagrantin/xoa-proxy/releases/latest"
+            echo "▶ No xoa_proxy_tag input — falling back to latest xoa-proxy release"
+          fi
+
           RPM_URL=$(curl -sf \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/Vagrantin/xoa-proxy/releases/latest" \
+            "${RELEASE_API}" \
             | jq -r '.assets[] | select(.name | endswith(".rpm")) | .browser_download_url')
 
-          test -n "${RPM_URL}" || { echo "Failed to find xoa-proxy RPM asset"; exit 1; }
+          test -n "${RPM_URL}" || { echo "Failed to find xoa-proxy RPM asset for ${RELEASE_API}"; exit 1; }
+          echo "▶ Downloading: ${RPM_URL}"
 
           PACKAGE_NAME=$(basename "${RPM_URL}")
           echo "XOA_PROXY_FILENAME=${PACKAGE_NAME}" >> $GITHUB_ENV
@@ -170,7 +206,7 @@ jobs:
           # Use the dynamic filename to discover the internal package name (e.g. xo-lite-ce)
           PKG_NAME=$(rpm -qp "${{ env.XOLITE-CE_FILENAME }}" --qf '%{NAME}')
           echo "Discovered internal package name: ${PKG_NAME}"
-          sed -i 's/^xo-lite$/${PKG_NAME}/' create-install-image/configs/${XCPNG_VER}/packages.lst
+          sed -i "s/^xo-lite\$/${PKG_NAME}/" create-install-image/configs/${XCPNG_VER}/packages.lst
           
           echo "▶ Custom repo template deployed for XCP-ng ${XCPNG_VER}"
 

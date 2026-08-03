@@ -17,6 +17,9 @@ on:
       xoa_proxy_tag:
         description: 'Exact xoa-proxy release tag to bake in (empty = latest)'
         required: false
+      xcp_hl_release_tag:
+        description: 'Exact xcp-hl-release release tag to bake in (empty = latest)'
+        required: false
 
 jobs:
   build-iso:
@@ -139,6 +142,38 @@ jobs:
 
           wget -q -O "${PACKAGE_NAME}" "${RPM_URL}"
 
+      # ── 4c. Fetch the signed xcp-hl-release RPM ───────────────────────────
+      # Carries /etc/yum.repos.d/xcp-hl.repo and the community signing key, so a
+      # host installed from this ISO can reach the XCP-HL yum repositories (and
+      # therefore show XCP-HL updates in XOA) without any manual setup.
+      - name: Fetch xcp-hl-release RPM
+        run: |
+          PINNED_TAG="${{ github.event.inputs.xcp_hl_release_tag }}"
+          if [ -n "${PINNED_TAG}" ]; then
+            RELEASE_API="https://api.github.com/repos/Vagrantin/xcp-hl/releases/tags/${PINNED_TAG}"
+            echo "▶ Using pinned xcp-hl-release release: ${PINNED_TAG}"
+          else
+            RELEASE_API="https://api.github.com/repos/Vagrantin/xcp-hl/releases/latest"
+            echo "▶ No xcp_hl_release_tag input, falling back to latest xcp-hl release"
+          fi
+
+          # Unlike the component repos, xcp-hl also hosts the documentation site,
+          # so a release there may carry no RPM at all. Match on the package name
+          # rather than on the .rpm suffix alone.
+          RPM_URL=$(curl -sf \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "${RELEASE_API}" \
+            | jq -r '.assets[] | select(.name | startswith("xcp-hl-release-")) | select(.name | endswith(".rpm")) | .browser_download_url')
+
+          test -n "${RPM_URL}" || { echo "Failed to find xcp-hl-release RPM asset for ${RELEASE_API}"; exit 1; }
+          echo "▶ Downloading: ${RPM_URL}"
+
+          PACKAGE_NAME=$(basename "${RPM_URL}")
+          echo "XCP_HL_RELEASE_FILENAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "▶ Detected filename: ${PACKAGE_NAME}"
+
+          wget -q -O "${PACKAGE_NAME}" "${RPM_URL}"
+
       # ── 5. Build local community RPM repo ─────────────────────────────────
       - name: Create and Sign community RPM repo
         run: |
@@ -146,6 +181,7 @@ jobs:
           mkdir -p community-repo/x86_64
           cp "${{ env.XOLITE-CE_FILENAME }}" community-repo/x86_64/
           cp "${{ env.XOA_PROXY_FILENAME }}" community-repo/x86_64/
+          cp "${{ env.XCP_HL_RELEASE_FILENAME }}" community-repo/x86_64/
           createrepo_c community-repo/x86_64
           # Sign the metadata of the community repo (agent has cached passphrase)
           gpg --batch --pinentry-mode loopback \
@@ -276,6 +312,7 @@ jobs:
                 --define-repo community!file:///community-repo \
                 --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base \
                 --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates \
+                --extra-packages xcp-hl-release \
                 --verbose \
                 ${XCPNG_VER} /output/install-${XCPNG_VER}.img
             "
@@ -300,6 +337,17 @@ jobs:
           # Verify based on the new 'xo-lite-ce' naming pattern
           find /tmp/iso-check -name "xo-lite-ce*.rpm" | grep -q "xo-lite-ce" || {
             echo "Verification failed: New xo-lite-ce RPM not found in ISO"
+            exit 1
+          }
+
+          # xo-lite-ce and xoa-proxy reach the ISO through dependency
+          # resolution, but nothing depends on a -release package, so it is
+          # pulled in by name via --extra-packages. If that flag ever stops
+          # being passed the build still succeeds and the ISO silently ships
+          # without any XCP-HL repository configuration, so assert it here.
+          find /tmp/iso-check -name "xcp-hl-release*.rpm" | grep -q "xcp-hl-release" || {
+            echo "Verification failed: xcp-hl-release RPM not found in ISO"
+            echo "Hosts installed from this ISO would have no XCP-HL yum repos."
             exit 1
           }
           echo "Verification successful"

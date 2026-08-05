@@ -242,7 +242,16 @@ jobs:
           PKG_NAME=$(rpm -qp "${{ env.XOLITE-CE_FILENAME }}" --qf '%{NAME}')
           echo "Discovered internal package name: ${PKG_NAME}"
           sed -i "s/^xo-lite\$/${PKG_NAME}/" create-install-image/configs/${XCPNG_VER}/packages.lst
-          
+
+          # --extra-packages on create-iso.sh (below) only stages a package in
+          # the ISO's own repo; it does not select it for install. The rootfs
+          # that actually becomes the installed host is install.img, built
+          # from packages.lst by create-installimg.sh's plain `yum install`.
+          # Nothing depends on a -release package, so it must be listed here
+          # explicitly or it never lands on a fresh install despite being
+          # present on the media.
+          echo "xcp-hl-release" >> create-install-image/configs/${XCPNG_VER}/packages.lst
+
           echo "▶ Custom repo template deployed for XCP-ng ${XCPNG_VER}"
 
       - name: Inject Community GPG key into toolchain templates
@@ -287,6 +296,22 @@ jobs:
                 ${XCPNG_VER}
             echo 'install.img built'
             "
+
+      # install.img is what actually becomes the installed host's filesystem;
+      # the later "Verify community RPM in ISO" step only checks the ISO
+      # media, which passes even when a package listed there was never
+      # selected for installation. Check the real rootfs archive instead
+      # (bzip2'd cpio newc, per create-installimg.sh) for the marker file
+      # xcp-hl-release installs, so a packages.lst regression fails here.
+      - name: Verify xcp-hl-release is installed in install.img
+        run: |
+          set -euo pipefail
+          bzip2 -dc "install-${XCPNG_VER}.img" | cpio -it 2>/dev/null > /tmp/installimg-contents.txt
+          grep -qx "./etc/yum.repos.d/xcp-hl.repo" /tmp/installimg-contents.txt || {
+            echo "❌ xcp-hl-release not installed into install.img (only staged, not selected)"
+            exit 1
+          }
+          echo "✅ xcp-hl-release installed into install.img"
 
       - name: Build ISO
         run: |
@@ -341,9 +366,12 @@ jobs:
 
           # xo-lite-ce and xoa-proxy reach the ISO through dependency
           # resolution, but nothing depends on a -release package, so it is
-          # pulled in by name via --extra-packages. If that flag ever stops
-          # being passed the build still succeeds and the ISO silently ships
-          # without any XCP-HL repository configuration, so assert it here.
+          # staged by name via --extra-packages (and actually selected for
+          # install via the packages.lst entry added above, checked by the
+          # earlier "Verify xcp-hl-release is installed in install.img" step).
+          # If --extra-packages ever stops being passed the build still
+          # succeeds and the ISO media silently loses the RPM, so assert it
+          # here too.
           find /tmp/iso-check -name "xcp-hl-release*.rpm" | grep -q "xcp-hl-release" || {
             echo "Verification failed: xcp-hl-release RPM not found in ISO"
             echo "Hosts installed from this ISO would have no XCP-HL yum repos."

@@ -157,15 +157,14 @@ jobs:
             echo "▶ No xcp_hl_release_tag input, falling back to latest xcp-hl release"
           fi
 
-          # Unlike the component repos, xcp-hl also hosts the documentation site,
-          # so a release there may carry no RPM at all. Match on the package name
-          # rather than on the .rpm suffix alone.
+          # Name-matched rather than suffix-matched so a second package appearing
+          # in xcp-hl later cannot return two URLs and break basename/wget below.
           RPM_URL=$(curl -sf \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "${RELEASE_API}" \
             | jq -r '.assets[] | select(.name | startswith("xcp-hl-release-")) | select(.name | endswith(".rpm")) | .browser_download_url')
 
-          test -n "${RPM_URL}" || { echo "Failed to find xcp-hl-release RPM asset for ${RELEASE_API}"; exit 1; }
+          test -n "${RPM_URL}" || { echo "No xcp-hl-release RPM on ${RELEASE_API}; the Build and Sign XCP-HL Release RPM workflow must publish one first"; exit 1; }
           echo "▶ Downloading: ${RPM_URL}"
 
           PACKAGE_NAME=$(basename "${RPM_URL}")

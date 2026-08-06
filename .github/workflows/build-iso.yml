@@ -333,7 +333,6 @@ jobs:
                 --define-repo community!file:///community-repo \
                 --define-repo base!https://updates.xcp-ng.org/8/${XCPNG_VER}/base \
                 --define-repo updates!https://updates.xcp-ng.org/8/${XCPNG_VER}/updates \
-                --extra-packages xcp-hl-release \
                 --verbose \
                 ${XCPNG_VER} /output/install-${XCPNG_VER}.img
             "
@@ -361,11 +360,11 @@ jobs:
             exit 1
           }
 
-          # xcp-hl-release reaches installed hosts as a dependency of
-          # xo-lite-ce, the same route xoa-proxy already takes. --extra-packages
-          # additionally stages it by name; if either the dependency or that
-          # flag is dropped the build still succeeds and the ISO media silently
-          # loses the RPM, so assert it here.
+          # xcp-hl-release reaches the media, and installed hosts, solely as a
+          # dependency of xo-lite-ce, the route xoa-proxy already takes. That
+          # is the only mechanism now, so assert it: if the Requires: is ever
+          # dropped, or an xolite-ce release predating it is pinned, the ISO
+          # silently ships without XCP-HL repo configuration.
           find /tmp/iso-check -name "xcp-hl-release*.rpm" | grep -q "xcp-hl-release" || {
             echo "Verification failed: xcp-hl-release RPM not found in ISO"
             echo "Hosts installed from this ISO would have no XCP-HL yum repos."

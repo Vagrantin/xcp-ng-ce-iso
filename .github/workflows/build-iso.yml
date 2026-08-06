@@ -251,6 +251,28 @@ jobs:
           cp /tmp/RPM-GPG-KEY-xcp-ng-ce create-install-image/templates/installimg/base/etc/pki/rpm-gpg/
           curl -sL https://xcp-ng.org/RPM-GPG-KEY-xcpng -o create-install-image/templates/installimg/base/etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng
 
+      # host-installer reads [build] number from the media's .treeinfo and
+      # writes it to BUILD_NUMBER in /etc/xensource-inventory, so stamping the
+      # ce counter here is what lets an installed host name the ISO it came
+      # from. Upstream ships the placeholder "cloud". create-iso.sh copies this
+      # template into the ISO and only substitutes @@...@@ tokens, so the value
+      # set here reaches the media untouched.
+      - name: Stamp ISO build number into .treeinfo
+        run: |
+          set -euo pipefail
+          TREEINFO="create-install-image/templates/iso/${XCPNG_VER}/.treeinfo"
+          # Fail loudly rather than ship an unstamped ISO if upstream restructures.
+          grep -q '^number = ' "${TREEINFO}" || {
+            echo "❌ no '[build] number' line in ${TREEINFO}; upstream layout changed"
+            exit 1
+          }
+          sed -i "s/^number = .*/number = ${CE_COUNTER}/" "${TREEINFO}"
+          grep -qx "number = ${CE_COUNTER}" "${TREEINFO}" || {
+            echo "❌ failed to stamp build number into ${TREEINFO}"
+            exit 1
+          }
+          echo "▶ ISO build number stamped: ${CE_COUNTER}"
+
       - name: Patch toolchain with git
         run: |
           cd create-install-image
@@ -349,6 +371,16 @@ jobs:
             echo "Hosts installed from this ISO would have no XCP-HL yum repos."
             exit 1
           }
+
+          # The stamped build number is what an installed host reports as
+          # BUILD_NUMBER, so assert it survived into the media.
+          xorriso -osirrox on -indev "${OUTPUT}" -extract /.treeinfo /tmp/iso-treeinfo
+          grep -qx "number = ${CE_COUNTER}" /tmp/iso-treeinfo || {
+            echo "Verification failed: .treeinfo build number is not ${CE_COUNTER}"
+            grep -A1 "^\[build\]" /tmp/iso-treeinfo || true
+            exit 1
+          }
+          echo "▶ ISO .treeinfo build number: ${CE_COUNTER}"
           echo "Verification successful"
 
       # ── 10. Checksum and sign ─────────────────────────────────────────────

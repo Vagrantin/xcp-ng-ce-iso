@@ -208,10 +208,10 @@ jobs:
           cat > Dockerfile.build <<EOF
           FROM ghcr.io/xcp-ng/xcp-ng-build-env:${XCPNG_VER}
           RUN yum install -y -q \
-                genisoimage syslinux grub-tools createrepo_c libfaketime && \
+                genisoimage syslinux grub-tools createrepo_c libfaketime patch && \
               yum install -y -q --enablerepo=epel gnupg1 && \
               curl -sL https://xcp-ng.org/RPM-GPG-KEY-xcpng \
-              -o /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng 
+              -o /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng
           EOF
           docker build -f Dockerfile.build -t xcp-ng-build-local .
       
@@ -277,6 +277,7 @@ jobs:
         run: |
           cd create-install-image
           git apply ../patches/multi-key-support.patch
+          git apply ../patches/installer-iso-sr-hook.patch
 
           if grep -q "allmatches" scripts/create-installimg.sh; then
             echo "Toolchain patched successfully"
@@ -284,7 +285,21 @@ jobs:
             echo "Patch verification failed"
             exit 1
           fi
-          
+
+          if grep -q "host-installer-iso-sr.patch" scripts/create-installimg.sh; then
+            echo "XCP-HL ISO-SR hook patched successfully"
+          else
+            echo "XCP-HL ISO-SR hook patch verification failed"
+            exit 1
+          fi
+
+          # host-installer-iso-sr.patch is applied by create-installimg.sh
+          # itself (see the hook above), inside the container, against
+          # $ROOTFS/opt/xensource/installer -- so it has to be visible at
+          # $topdir/host-installer-iso-sr.patch, i.e. alongside scripts/, not
+          # just present on the runner.
+          cp ../patches/host-installer-iso-sr.patch .
+
       - name: Build install.img
         run: |
           docker run --rm \
@@ -381,6 +396,23 @@ jobs:
           }
           echo "▶ ISO .treeinfo build number: ${CE_COUNTER}"
           echo "Verification successful"
+
+      # host-installer-iso-sr.patch touches install.img (the installer's own
+      # ramdisk), not a package in the ISO's own repo, so it needs its own
+      # check: unpack the ramdisk and confirm the patched backend.py landed,
+      # rather than trusting the "Patch toolchain with git" step's grep alone
+      # (that only proves the hook line exists in the toolchain script, not
+      # that create-installimg.sh actually ran it against a real $ROOTFS).
+      - name: Verify XCP-HL ISO-SR patch in install.img
+        run: |
+          bzip2 -dc "install-${XCPNG_VER}.img" | \
+            cpio -i --to-stdout ./opt/xensource/installer/backend.py \
+            > /tmp/patched-backend.py
+          grep -q "installIsoSrFirstboot" /tmp/patched-backend.py || {
+            echo "Verification failed: install.img's backend.py has no XCP-HL ISO-SR code"
+            exit 1
+          }
+          echo "▶ install.img carries the XCP-HL ISO-SR patch"
 
       # ── 10. Checksum and sign ─────────────────────────────────────────────
       - name: Generate and sign SHA256SUMS

@@ -405,13 +405,41 @@ jobs:
       # that create-installimg.sh actually ran it against a real $ROOTFS).
       - name: Verify XCP-HL ISO-SR patch in install.img
         run: |
-          bzip2 -dc "install-${XCPNG_VER}.img" | \
-            cpio -i --to-stdout ./opt/xensource/installer/backend.py \
-            > /tmp/patched-backend.py
+          # No pipefail on purpose: grep -q closes the pipe early, which
+          # SIGPIPEs bzip2/cpio upstream and would fail the step on success.
+          set -eu
+          command -v cpio >/dev/null || { echo "cpio not available on the runner"; exit 1; }
+
+          # create-installimg.sh packs the ramdisk with "find . | cpio -o",
+          # and GNU cpio normalises the leading "./" away, so members are
+          # stored as "opt/..." not "./opt/...". Match with a glob so this
+          # holds either way.
+          bzip2 -dc "install-${XCPNG_VER}.img" \
+            | cpio -i --to-stdout "*opt/xensource/installer/backend.py" \
+            > /tmp/patched-backend.py 2>/dev/null
+
+          test -s /tmp/patched-backend.py || {
+            echo "Verification failed: could not extract backend.py from install.img"
+            echo "Members under opt/xensource/installer:"
+            bzip2 -dc "install-${XCPNG_VER}.img" | cpio -it 2>/dev/null \
+              | grep "opt/xensource/installer" | head -20
+            exit 1
+          }
+
           grep -q "installIsoSrFirstboot" /tmp/patched-backend.py || {
             echo "Verification failed: install.img's backend.py has no XCP-HL ISO-SR code"
             exit 1
           }
+
+          # The first-boot script and unit are new files created by the patch,
+          # so finding them proves the whole patch applied, not just the hunks
+          # against existing files.
+          bzip2 -dc "install-${XCPNG_VER}.img" | cpio -it 2>/dev/null \
+            | grep -q "opt/xensource/installer/xcp-hl/xcp-hl-iso-sr-init" || {
+            echo "Verification failed: first-boot script missing from install.img"
+            exit 1
+          }
+
           echo "▶ install.img carries the XCP-HL ISO-SR patch"
 
       # ── 10. Checksum and sign ─────────────────────────────────────────────

@@ -367,21 +367,28 @@ index c3499ee..a86f9f8 100644
  SCRIPTS_DIR = "/tmp/scripts"
 diff --git a/xcp-hl/xcp-hl-iso-sr-init b/xcp-hl/xcp-hl-iso-sr-init
 new file mode 100644
-index 0000000..68d9d38
+index 0000000..47e4a51
 --- /dev/null
 +++ b/xcp-hl/xcp-hl-iso-sr-init
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,160 @@
 +#!/bin/bash
 +#
 +# Creates the XCP-HL ISO storage repository at first boot, if the XCP-HL
 +# ISO partition (LABEL=xcphl-iso) exists and no ISO SR is already registered.
 +#
 +# Modeled on /opt/xensource/libexec/storage-init, which creates the primary
-+# local SR the same way: wait for xapi/the SM plugin, create the SR, mark
-+# done via a ran-* marker in /var/lib/misc so this never re-runs. Started by
-+# xcp-hl-iso-store.service, After=xapi-init-complete.target so xapi is known
-+# up and the primary SR (created by storage-init.service, which we also
-+# order after) already exists.
++# local SR the same way: wait for xapi/the SM plugin, then create the SR.
++# Started by xcp-hl-iso-store.service, After=xapi-init-complete.target so
++# xapi is known up and the primary SR (created by storage-init.service,
++# which we also order after) already exists.
++#
++# Unlike storage-init this converges on every boot rather than running once
++# behind a ran-* marker. XAPI does not reliably bring this SR's PBD back
++# after a restart -- observed unplugged on the boot following creation --
++# and ISOSR.attach() only checks the mountpoint exists, it never remounts.
++# A create-once script cannot heal either, so the ISO library would silently
++# vanish on the first reboot. Re-asserting mount + plug each boot is cheap
++# and makes both self-healing.
 +#
 +# Deliberately never fails the unit: every exit path below is 0, even on
 +# error, and every finding is logged. A red unit on a fresh homelab
@@ -398,7 +405,6 @@ index 0000000..68d9d38
 +TAG="xcp-hl-iso-sr-init"
 +LABEL="xcphl-iso"
 +MOUNTPOINT="/var/opt/xen/xcp-hl-iso"
-+MARKER="/var/lib/misc/ran-xcp-hl-iso-sr"
 +
 +log() {
 +    logger -t "${TAG}" -- "$*"
@@ -407,13 +413,43 @@ index 0000000..68d9d38
 +
 +done_nothing_to_do() {
 +    log "$*"
-+    touch "${MARKER}"
 +    exit 0
 +}
 +
-+# Idempotent: never re-create if we already have.
-+if [ -n "$(xe sr-list other-config:xcp-hl-managed=iso-store params=uuid --minimal 2>/dev/null)" ]; then
-+    done_nothing_to_do "XCP-HL ISO SR already registered, nothing to do"
++# Ensure the filesystem is mounted, preferring the fstab entry.
++ensure_mounted() {
++    mkdir -p "${MOUNTPOINT}"
++    mountpoint -q "${MOUNTPOINT}" && return 0
++    mount "${MOUNTPOINT}" 2>/dev/null && return 0
++    [ -n "${1:-}" ] && mount "${1}" "${MOUNTPOINT}" 2>/dev/null && return 0
++    return 1
++}
++
++# Ensure every PBD of the SR is plugged. This is the part XAPI does not do
++# for us reliably across a reboot.
++ensure_plugged() {
++    local sr="$1" pbd att rc=0
++    for pbd in $(xe pbd-list sr-uuid="${sr}" params=uuid --minimal 2>/dev/null | tr ',' ' '); do
++        att=$(xe pbd-param-get uuid="${pbd}" param-name=currently-attached 2>/dev/null)
++        if [ "${att}" != "true" ]; then
++            log "PBD ${pbd} is not attached, plugging it"
++            xe pbd-plug uuid="${pbd}" >/dev/null 2>&1 || { log "pbd-plug failed for ${pbd}"; rc=1; }
++        fi
++    done
++    return "${rc}"
++}
++
++# Already registered: reconcile rather than exit. Mount first, since
++# ISOSR.attach() only checks that the mountpoint exists and will happily
++# attach onto an empty directory if the filesystem is not there yet.
++EXISTING=$(xe sr-list other-config:xcp-hl-managed=iso-store params=uuid --minimal 2>/dev/null)
++if [ -n "${EXISTING}" ]; then
++    DEV=$(blkid -L "${LABEL}" 2>/dev/null)
++    ensure_mounted "${DEV}" || log "WARNING: ${MOUNTPOINT} is not mounted"
++    ensure_plugged "${EXISTING}" || true
++    xe sr-scan uuid="${EXISTING}" >/dev/null 2>&1 || true
++    log "XCP-HL ISO SR ${EXISTING} reconciled (mounted and plugged)"
++    exit 0
 +fi
 +
 +# Respect a pre-existing user-created ISO library: only the built-in
@@ -492,21 +528,24 @@ index 0000000..68d9d38
 +    log "Created SR ${SR_UUID} but failed to tag it with other-config:xcp-hl-managed"
 +fi
 +
++ensure_plugged "${SR_UUID}" || true
 +log "Created XCP-HL ISO SR ${SR_UUID} at ${MOUNTPOINT}"
-+touch "${MARKER}"
 +exit 0
 diff --git a/xcp-hl/xcp-hl-iso-store.service b/xcp-hl/xcp-hl-iso-store.service
 new file mode 100644
-index 0000000..5de7eb0
+index 0000000..855949f
 --- /dev/null
 +++ b/xcp-hl/xcp-hl-iso-store.service
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,17 @@
 +[Unit]
-+Description=Create the XCP-HL ISO storage repository during first boot
++Description=Create and reconcile the XCP-HL ISO storage repository
 +Documentation=https://github.com/Vagrantin/xcp-hl
 +Requires=xapi.service xapi-init-complete.target
-+After=xapi.service xapi-init-complete.target storage-init.service
-+ConditionPathExists=!/var/lib/misc/ran-xcp-hl-iso-sr
++After=xapi.service xapi-init-complete.target storage-init.service local-fs.target
++
++# Deliberately no ConditionPathExists guard: this converges on every boot.
++# XAPI does not reliably re-plug this SR's PBD after a restart, so a
++# create-once unit would leave the ISO library detached and unusable.
 +
 +[Service]
 +Type=oneshot

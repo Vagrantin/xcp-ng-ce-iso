@@ -1,0 +1,22 @@
+diff --git a/scripts/create-installimg.sh b/scripts/create-installimg.sh
+index 264ee17..7af1c72 100755
+--- a/scripts/create-installimg.sh
++++ b/scripts/create-installimg.sh
+@@ -175,6 +175,17 @@ ln -s ../../../EULA "$ROOTFS/opt/xensource/installer/"
+ ln -s ../../../usr/lib/python2.7/site-packages/xcp/branding.py \
+            "$ROOTFS/opt/xensource/installer/version.py"
+ 
++# XCP-HL: reserve a dedicated ISO storage partition on fresh installs.
++# Applied directly to host-installer's files inside the ramdisk, rather than
++# shipped as a forked host-installer RPM: host-installer already exists in
++# the stock XCP-ng repos, so there is no safe way to publish a same-named,
++# higher-precedence package for it without risking a live host's own
++# rpmdb/update tooling. Maintained as real commits against upstream at
++# https://github.com/Vagrantin/host-installer (branch
++# feat/xcp-hl-iso-storage); regenerate ../host-installer-iso-sr.patch from
++# that branch whenever it is rebased.
++patch -p1 -d "$ROOTFS/opt/xensource/installer" < "$topdir/host-installer-iso-sr.patch"
++
+ 
+ ### services
+ 

@@ -28,6 +28,13 @@ jobs:
       contents: write
     timeout-minutes: 180
 
+    env:
+      # Primary key fingerprint of "XCP-ng Community Edition". Published in the
+      # release notes and asserted below, so the key shipped with an ISO can
+      # never quietly become a different key from the one users are told to
+      # expect. Subkeys rotate under this; the primary does not.
+      GPG_FINGERPRINT: 2F591DB9D2C128C4C3D963F46DA00DCA5BBA215A
+
     steps:
       # ── 0. Checkout xcp-ng-ce-iso ─────────────────────────────────────────
       - name: Checkout
@@ -78,7 +85,19 @@ jobs:
             | awk -F: '/^sec/{print $5}' | head -1)
           echo "GPG_KEY_ID=${GPG_KEY_ID}" >> $GITHUB_ENV
           echo "GPG_PASSPHRASE=${GPG_PASSPHRASE}" >> $GITHUB_ENV
-          echo "▶ GPG key imported: ${GPG_KEY_ID}" 
+          echo "▶ GPG key imported: ${GPG_KEY_ID}"
+
+          # The release notes tell users to expect GPG_FINGERPRINT, and the
+          # release now ships this key as a file. If the secret ever holds a
+          # different key, publishing it under those instructions would be
+          # worse than not publishing it at all, so fail here instead.
+          ACTUAL_FPR=$(gpg --list-secret-keys --with-colons --fingerprint 2>/dev/null \
+            | awk -F: '/^fpr/{print $10; exit}')
+          if [ "${ACTUAL_FPR}" != "${GPG_FINGERPRINT}" ]; then
+            echo "❌ signing key is ${ACTUAL_FPR}, expected ${GPG_FINGERPRINT}"
+            exit 1
+          fi
+          echo "▶ GPG fingerprint verified: ${ACTUAL_FPR}"
 
       # ── 2. Clone the official ISO build toolchain ─────────────────────────
       - name: Clone create-install-image
@@ -459,6 +478,25 @@ jobs:
           echo "▶ Verifying signature before publish:"
           gpg --verify "${CHECKSUM_FILE}.asc" "${CHECKSUM_FILE}"
 
+      # The key that verifies the release, published with the release. This is
+      # exported from the runner's keyring rather than committed, so it is by
+      # construction the key that just signed the checksum file.
+      - name: Export the public signing key for publication
+        run: |
+          set -euo pipefail
+          PUBKEY_FILE="xcp-ng-ce-public.asc"
+          gpg --armor --export "${GPG_KEY_ID}" > "${PUBKEY_FILE}"
+          test -s "${PUBKEY_FILE}" || { echo "❌ exported key is empty"; exit 1; }
+          echo "PUBKEY_FILE=${PUBKEY_FILE}" >> $GITHUB_ENV
+
+          # Prove the published file verifies the published signature, using a
+          # throwaway keyring so the runner's own keys cannot mask a bad export.
+          GNUPGHOME=$(mktemp -d)
+          export GNUPGHOME
+          gpg --batch --quiet --import "${PUBKEY_FILE}"
+          gpg --batch --verify "${CHECKSUM_FILE}.asc" "${CHECKSUM_FILE}"
+          echo "▶ published key verifies the published signature"
+
       # ── 11. Publish Release ───────────────────────────────────────────────
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -475,6 +513,7 @@ jobs:
             | `xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso` | Bootable installer ISO |
             | `xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso.sha256` | SHA256 checksum of the ISO |
             | `xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso.sha256.asc` | GPG signature over the checksum file |
+            | `xcp-ng-ce-public.asc` | The public key that signature was made with |
 
             ### Verify before installing
 
@@ -482,22 +521,48 @@ jobs:
             was signed by this project, then you confirm the ISO matches that checksum.
             Both steps are required.
 
-            **1. Download all three files into the same directory**
+            **1. Download the files into the same directory**
 
             All files must be in the same directory — `sha256sum -c` looks for
             the ISO by name in the current directory.
 
             ```bash
             cd ~/Downloads
-            # download the three files listed above from this release page
+            # download the files listed above from this release page
             ```
 
             **2. Import the community GPG key (one-time)**
 
+            From a keyserver, which is the stronger option because it is a
+            channel independent of this release page:
+
             ```bash
             gpg --keyserver keys.openpgp.org \
-                --recv-keys 2F591DB9D2C128C4C3D963F46DA00DCA5BBA215A
+                --recv-keys ${{ env.GPG_FINGERPRINT }}
             ```
+
+            If the keyserver is unreachable, or you are verifying offline, use
+            `xcp-ng-ce-public.asc` from this release instead:
+
+            ```bash
+            gpg --import xcp-ng-ce-public.asc
+            ```
+
+            Then check that the key you imported is the one you expect:
+
+            ```bash
+            gpg --fingerprint ${{ env.GPG_FINGERPRINT }}
+            ```
+
+            Be aware of what each route proves. A key taken from this release
+            page is only as trustworthy as the page it came from: anyone able
+            to replace the ISO could replace the key beside it, and the
+            signature would still check out. It gives you a working offline
+            verification and a guarantee that the ISO, the checksum and the
+            key all came from one build — not proof of who built it. For that,
+            compare the fingerprint above against a source that is not this
+            page: the keyserver, or the copy published at
+            https://vagrantin.github.io/xcp-hl/xcp-ng-ce-public.asc
 
             **3. Verify the checksum file is authentic**
 
@@ -538,5 +603,6 @@ jobs:
             ${{ env.OUTPUT }}
             ${{ env.CHECKSUM_FILE }}
             ${{ env.CHECKSUM_FILE }}.asc
+            ${{ env.PUBKEY_FILE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

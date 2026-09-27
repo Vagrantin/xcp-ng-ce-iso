@@ -16,7 +16,7 @@ index e839978..909e819 100644
          guest_disks = set()
          if inc_primary:
 diff --git a/backend.py b/backend.py
-index f8c4bc9..ebd4525 100644
+index f8c4bc9..16e6ac2 100644
 --- a/backend.py
 +++ b/backend.py
 @@ -122,8 +122,8 @@ def getPrepSequence(ans, interactive):
@@ -319,6 +319,16 @@ index f8c4bc9..ebd4525 100644
      inv.write("INSTALLATION_UUID='%s'\n" % installID)
      inv.write("CONTROL_DOMAIN_UUID='%s'\n" % controlID)
      inv.write("DOM0_MEM='%d'\n" % host_config['dom0-mem'])
+@@ -1822,7 +1924,8 @@ def retTrue(*args, **kwargs):
+ 
+ base = YumBase()
+ for repo in base.repos.repos.itervalues():
+-    if repo.id.startswith('xcp-ng'):
++    # XCP-HL: trust xcp-hl-* repo keys too, or yum prompts on first contact.
++    if repo.id.startswith(('xcp-ng', 'xcp-hl')):
+         print("*** Importing GPG key for repository %s - %s" % (repo.id, repo.name))
+         base.getKeyForRepo(repo, callback=retTrue)
+ """
 diff --git a/constants.py b/constants.py
 index c3499ee..374599d 100644
 --- a/constants.py

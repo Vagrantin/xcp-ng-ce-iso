@@ -120,7 +120,7 @@ sed "s/#.*//" < "$PACKAGES_LST" |
 ### removal of abusively-pulled packages (list manually extracted as
 ### packages not in 8.2.1 install.img)
 
-rpm --root="$ROOTFS" --nodeps --erase --allmatches \ 
+rpm --root="$ROOTFS" --nodeps --erase --allmatches \
     binutils dracut gpg-pubkey pkgconfig xen-hypervisor
 
 

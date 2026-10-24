@@ -482,8 +482,8 @@ jobs:
 
             ### RPM baked into this ISO
 
-            xcp-hl-release tag: \`${{ env.XCP_HL_RELEASE_TAG }}\`
-            xcp-hl-release RPM: \`${{ env.XCP_HL_RELEASE_FILENAME }}\`
+            xcp-hl-release tag: `${{ env.XCP_HL_RELEASE_TAG }}`
+            xcp-hl-release RPM: `${{ env.XCP_HL_RELEASE_FILENAME }}`
 
             ### Verify before installing
 

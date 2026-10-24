@@ -159,12 +159,16 @@ jobs:
 
           # Name-matched rather than suffix-matched so a second package appearing
           # in xcp-hl later cannot return two URLs and break basename/wget below.
-          RPM_URL=$(curl -sf \
+          RELEASE_JSON=$(curl -sf \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "${RELEASE_API}" \
-            | jq -r '.assets[] | select(.name | startswith("xcp-hl-release-")) | select(.name | endswith(".rpm")) | .browser_download_url')
+            "${RELEASE_API}")
+          RPM_URL=$(jq -r '.assets[] | select(.name | startswith("xcp-hl-release-")) | select(.name | endswith(".rpm")) | .browser_download_url' <<<"${RELEASE_JSON}")
+          ACTUAL_TAG=$(jq -r '.tag_name // empty' <<<"${RELEASE_JSON}")
 
           test -n "${RPM_URL}" || { echo "No xcp-hl-release RPM on ${RELEASE_API}; the Build and Sign XCP-HL Release RPM workflow must publish one first"; exit 1; }
+          test "$(printf '%s\n' "${RPM_URL}" | wc -l)" -eq 1 || { echo "Multiple xcp-hl-release RPM assets on ${RELEASE_API}"; exit 1; }
+          test -n "${ACTUAL_TAG}" || { echo "Release has no tag: ${RELEASE_API}"; exit 1; }
+          echo "XCP_HL_RELEASE_TAG=${ACTUAL_TAG}" >> "$GITHUB_ENV"
           echo "▶ Downloading: ${RPM_URL}"
 
           PACKAGE_NAME=$(basename "${RPM_URL}")
@@ -475,6 +479,11 @@ jobs:
             | `xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso` | Bootable installer ISO |
             | `xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso.sha256` | SHA256 checksum of the ISO |
             | `xcp-ng-${{ env.XCPNG_VER }}-${{ env.CE_COUNTER }}.iso.sha256.asc` | GPG signature over the checksum file |
+
+            ### RPM baked into this ISO
+
+            xcp-hl-release tag: `${{ env.XCP_HL_RELEASE_TAG }}`
+            xcp-hl-release RPM: `${{ env.XCP_HL_RELEASE_FILENAME }}`
 
             ### Verify before installing
 

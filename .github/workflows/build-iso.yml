@@ -205,7 +205,7 @@ jobs:
           cp "${{ env.XOA_PROXY_FILENAME }}" community-repo/x86_64/
           cp "${{ env.XCP_HL_RELEASE_FILENAME }}" community-repo/x86_64/
           # createrepo_c on the new runner defaults to zstd, which the EL build container's yum cannot parse.
-          createrepo_c --compress-type gz community-repo/x86_64
+          createrepo_c --general-compress-type gz community-repo/x86_64
           # Sign the metadata of the community repo (agent has cached passphrase)
           gpg --batch --pinentry-mode loopback \
             --detach-sign --armor \

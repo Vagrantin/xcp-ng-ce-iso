@@ -336,6 +336,9 @@ jobs:
             bash -ce "
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcpng 
               rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-xcp-ng-ce 
+              # Fail before baking if a package is only signed in a format
+              # rpm 4.11 (dom0) cannot see (ce50-ce52 shipped that way).
+              bash /output/ci/audit-dom0-signatures.sh
               echo '--- Local Repo Contents ---'
               ls -lR /community-repo
 

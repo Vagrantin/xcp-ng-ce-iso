@@ -249,7 +249,7 @@ index f8c4bc9..16e6ac2 100644
  
 -def createDom0DiskFilesystems(install_type, disk, target_boot_mode, boot_partnum, primary_partnum, logs_partnum, disk_label_suffix):
 +def createDom0DiskFilesystems(install_type, disk, target_boot_mode, boot_partnum, primary_partnum, logs_partnum, disk_label_suffix, iso_partnum):
-+    if iso_partnum > 0:
++    if iso_partnum > 0 and install_type == INSTALL_TYPE_FRESH:
 +        partition = partitionDevice(disk, iso_partnum)
 +        try:
 +            # Deliberately ext4, not rootfs_type (ext3): this partition is
@@ -278,21 +278,18 @@ index f8c4bc9..16e6ac2 100644
  
      fstab = open(os.path.join(mounts['root'], 'etc/fstab'), "w")
      fstab.write("LABEL=%s    /         %s     defaults   1  1\n" % (rootfs_label%disk_label_suffix, rootfs_type))
-@@ -1492,6 +1583,13 @@ def writeFstab(mounts, target_boot_mode, primary_disk, logs_partnum, swap_partnu
+@@ -1492,6 +1583,10 @@ def writeFstab(mounts, target_boot_mode, primary_disk, logs_partnum, swap_partnu
              fstab.write("%s          swap      swap   defaults   0  0\n" % (constants.swap_file))
      if logs_partition:
          fstab.write("LABEL=%s    /var/log         %s     defaults   0  2\n" % (logsfs_label%disk_label_suffix, logsfs_type))
 +    if iso_partition:
-+        # XCP-HL: keyed off the partition actually existing on disk, not off
-+        # iso_partnum being set this run, so it is re-added correctly after
-+        # an XCP-ng version upgrade even though the upgrade path leaves
-+        # iso_partnum at 0 and never calls writeDom0DiskPartitions. nofail so
-+        # a missing/failed mount here never blocks boot.
++        # XCP-HL: upgrades detect the existing partition, so iso_partnum is also set here.
++        # nofail: a failed mount must never block boot.
 +        fstab.write("LABEL=%s    %s         ext4     defaults,nofail   0  2\n" % (constants.xcphl_iso_label, constants.ISO_SR_MOUNTPOINT))
  
  def enableAgent(mounts, network_backend, services):
      if network_backend == constants.NETWORK_BACKEND_VSWITCH:
-@@ -1729,7 +1827,7 @@ def writeXencommons(controlID, mounts):
+@@ -1729,7 +1824,7 @@ def writeXencommons(controlID, mounts):
          f.write(contents)
  
  def writeInventory(installID, controlID, mgmtAddrType, mounts, primary_disk, backup_partnum, logs_partnum, boot_partnum, swap_partnum,
@@ -301,7 +298,7 @@ index f8c4bc9..16e6ac2 100644
      inv = open(os.path.join(mounts['root'], constants.INVENTORY_FILE), "w")
      if 'product-brand' in branding:
         inv.write("PRODUCT_BRAND='%s'\n" % branding['product-brand'])
-@@ -1765,6 +1863,8 @@ def writeInventory(installID, controlID, mgmtAddrType, mounts, primary_disk, bac
+@@ -1765,6 +1860,8 @@ def writeInventory(installID, controlID, mgmtAddrType, mounts, primary_disk, bac
          layout += ',SWAP'
      if storage_partnum > 0:
          layout += ',SR'
@@ -310,7 +307,7 @@ index f8c4bc9..16e6ac2 100644
      inv.write("PARTITION_LAYOUT='%s'\n" % layout)
  
      if 'product-build' in branding:
-@@ -1773,6 +1873,8 @@ def writeInventory(installID, controlID, mgmtAddrType, mounts, primary_disk, bac
+@@ -1773,6 +1870,8 @@ def writeInventory(installID, controlID, mgmtAddrType, mounts, primary_disk, bac
      inv.write("PRIMARY_DISK='%s'\n" % (diskutil.idFromPartition(primary_disk) or primary_disk))
      if backup_partnum > 0:
          inv.write("BACKUP_PARTITION='%s'\n" % (diskutil.idFromPartition(partitionDevice(primary_disk, backup_partnum)) or partitionDevice(primary_disk, backup_partnum)))
@@ -319,7 +316,7 @@ index f8c4bc9..16e6ac2 100644
      inv.write("INSTALLATION_UUID='%s'\n" % installID)
      inv.write("CONTROL_DOMAIN_UUID='%s'\n" % controlID)
      inv.write("DOM0_MEM='%d'\n" % host_config['dom0-mem'])
-@@ -1822,7 +1924,8 @@ def retTrue(*args, **kwargs):
+@@ -1822,7 +1921,8 @@ def retTrue(*args, **kwargs):
  
  base = YumBase()
  for repo in base.repos.repos.itervalues():
